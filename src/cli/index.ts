@@ -86,6 +86,16 @@ program
       openai,
       config,
       {
+        onAnalysisComplete: (analysis) => {
+          spinner.stop();
+          const agentNames = analysis.selectedAgents
+            .map((role) => AGENT_DISPLAY_NAMES[role])
+            .join(", ");
+          console.log(chalk.bold(`\n🤖 Run mode:  ${analysis.runMode}`));
+          console.log(chalk.cyan(`👥 Agents:    ${agentNames}`));
+          console.log(chalk.dim(`💭 Rationale: ${analysis.rationale}\n`));
+          spinner.start("Building debate tree...");
+        },
         onDebateProgress: (nodeId, event) => {
           switch (event.type) {
             case "round_start":
@@ -263,6 +273,7 @@ function printResults(state: RunState): void {
   console.log(`${chalk.bold("Run ID:")}     ${state.id}`);
   console.log(`${chalk.bold("Intent:")}     ${state.intent}`);
   console.log(`${chalk.bold("Status:")}     ${state.status}`);
+  console.log(`${chalk.bold("Mode:")}       ${state.runMode ?? "implementation"}`);
   console.log(`${chalk.bold("Leaves:")}     ${state.leafNodeIds.length}`);
   console.log(`${chalk.bold("Tokens:")}     ${state.totalTokensUsed.toLocaleString()} (debate + judge)`);
   if (state.codexUsageTotal) {
@@ -272,6 +283,18 @@ function printResults(state: RunState): void {
     );
   }
   console.log(`${chalk.bold("Duration:")}   ${state.completedAt ? timeDiff(state.startedAt, state.completedAt) : "in progress"}`);
+
+  if (state.runMode === "exploration") {
+    const docs = collectLeafOutputs(state.root);
+    if (docs.length > 0) {
+      console.log(chalk.bold("\n📄 Exploration Documents\n"));
+      for (const doc of docs) {
+        console.log(chalk.bold.cyan(`\n─── ${doc.path} ───\n`));
+        console.log(doc.output);
+      }
+    }
+    return;
+  }
 
   if (state.rankedResults?.length) {
     console.log(chalk.bold("\n🏆 Ranked Solutions (best → worst)\n"));
@@ -284,6 +307,24 @@ function printResults(state: RunState): void {
       console.log();
     }
   }
+}
+
+function collectLeafOutputs(
+  node: TreeNode,
+  pathSoFar: string[] = []
+): Array<{ path: string; output: string }> {
+  const currentPath = node.branchLabel
+    ? [...pathSoFar, node.branchLabel]
+    : pathSoFar;
+  if (node.children.length === 0 && node.executionResult) {
+    return [
+      {
+        path: currentPath.join(" → ") || "(root)",
+        output: node.executionResult.output,
+      },
+    ];
+  }
+  return node.children.flatMap((child) => collectLeafOutputs(child, currentPath));
 }
 
 function printTree(node: TreeNode, prefix: string, isLast = true): void {

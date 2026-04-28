@@ -1,6 +1,6 @@
 # Codex Tree Orchestrator (CTO)
 
-Tree-of-Thought agent orchestration for software development. A CLI tool where specialised agents debate solutions in round-table format, branch when alternatives emerge, execute the best paths via OpenAI Codex, and rank results with an LLM judge.
+Tree-of-Thought agent orchestration for software development. A CLI tool where specialised agents debate solutions in round-table format, branch when alternatives emerge, execute leaf paths via OpenAI Codex, rank results with an LLM judge, and visualize saved runs in a local browser UI.
 
 ## How It Works
 
@@ -61,6 +61,14 @@ cto run "Build X" -y
 cto run "Build X" --dry-run
 ```
 
+To inspect saved runs visually:
+
+```bash
+cto ui
+```
+
+This launches a local saved-run explorer with a run picker, tree canvas, and node inspector.
+
 ## CLI Reference
 
 ### `run` — start a new orchestration
@@ -104,6 +112,20 @@ cto show run-abc123
 ```
 cto tree run-abc123
 ```
+
+### `ui [run-id]` — launch the saved-run browser UI
+
+```
+cto ui [run-id] [--port 43187] [--no-open]
+```
+
+The UI reads saved state from `.codex-tree`, serves a local browser app, and lets you inspect:
+
+- saved runs and run metadata
+- the full branch tree as an interactive canvas
+- node summaries, debate rounds, context updates, leaf execution output, changed files, tests, Codex usage, and judge scores
+
+If `run-id` is provided, the UI opens that run directly. Use `--no-open` to print the local URL without opening a browser.
 
 ### `resume <run-id>` — continue a paused or failed run
 
@@ -169,6 +191,13 @@ The LLM judge scores each leaf solution on five weighted dimensions:
 
 Runs are saved to `.codex-tree/<run-id>/state.json` after every node. The tree is always resumable from the last completed node.
 
+`cto ui` reads the same saved state and exposes it through a local-only HTTP server:
+
+- `GET /` — browser UI
+- `GET /api/runs` — saved run summaries
+- `GET /api/runs/:runId` — full `RunState`
+- `GET /api/health` — health check
+
 ## Project Status
 
 | Phase | Status |
@@ -177,11 +206,14 @@ Runs are saved to `.codex-tree/<run-id>/state.json` after every node. The tree i
 | Phase 2 — Hardening | ✅ Complete |
 | Phase 3 — Agent quality | ✅ Complete |
 | Phase 4 — Optimise (v0.2) | ✅ Complete |
+| Saved-run UI | ✅ Complete |
 
 **Phase 2 delivered:** Zod validation on all LLM responses, exponential-backoff retry (3 attempts, 1s/2s/4s), token budget tracking with warnings, graceful Ctrl+C shutdown with state save.
 
 **Phase 3 delivered:** Structured `CONTEXT_UPDATE` fields from agents (PRD, acceptance criteria, architecture decisions, implementation spec, test strategy) accumulated and propagated into every child node's context. Agent prompts now explicitly separate prior-round history from current-round speakers, giving each agent clear visibility into who has already spoken this round. Moderator sensitivity tightened — branching now requires cross-agent support, is discouraged in round 1, and defaults to CONTINUE over DIVERGING when ambiguous.
 
 **Phase 4 delivered:** Pre-run cost estimator (expected and worst-case node/token/USD projection, model-aware pricing). Confidence-based pruning — moderator emits a 0–1 score per alternative, branches below `--prune-threshold` are dropped before exploration. Parallel leaf execution and judging via a concurrency-limited pool (`--leaf-concurrency`). Codex Cloud best-of-N support via `--cloud-env` and `--cloud-attempts`. Per-leaf token usage breakdown (input / cached input / output / reasoning) aggregated and shown in the final summary.
+
+**Saved-run UI delivered:** `cto ui` launches a dependency-light local browser explorer for saved `.codex-tree` runs. It includes a run picker, SVG tree canvas, node selection, inspector tabs for summary/debate/context/leaf details, local JSON API routes, and run-id validation before loading state.
 
 See [CLAUDE.md](CLAUDE.md) for the full work plan and known issues.

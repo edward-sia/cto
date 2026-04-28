@@ -6,6 +6,12 @@ Three layers with strict downward dependencies:
 
 ```
 ┌─────────────────────────────────────────────┐
+│  Interface Layer                            │
+│  src/cli/index.ts · src/ui/                 │
+│  CLI commands · saved-run browser UI        │
+└────────────────────┬────────────────────────┘
+                     │
+┌────────────────────▼────────────────────────┐
 │  Layer 1 — Orchestrator                     │
 │  src/orchestrator/orchestrator.ts           │
 │  Tree traversal · branching · state mgmt    │
@@ -45,7 +51,32 @@ flowchart TD
     J --> K[Codex execution\nvia SDK or CLI]
     K --> L[LLM Judge scores\n5 dimensions]
     L --> M([Ranked results])
+    M --> N[Saved run UI\ncto ui]
 ```
+
+## Saved-Run UI
+
+`cto ui` is a local-only viewer for persisted run state. It does not participate in orchestration; it reads `.codex-tree/<run-id>/state.json` through the same file-store boundary used by the CLI.
+
+```mermaid
+flowchart LR
+    CLI["cto ui [run-id]"] --> Server["src/ui/server.ts\nLocal HTTP server"]
+    Server --> Store["FileStore\n.codex-tree/*/state.json"]
+    Server --> Page["src/ui/page.ts\nHTML/CSS/browser script"]
+    Browser["Browser"] --> Runs["GET /api/runs"]
+    Browser --> Run["GET /api/runs/:runId"]
+    Run --> Canvas["SVG tree canvas"]
+    Run --> Inspector["Node inspector tabs"]
+```
+
+The UI keeps browser-specific behavior isolated in `src/ui/page.ts`, while testable data shaping lives in small pure modules:
+
+- `src/ui/tree-layout.ts` — flattens `TreeNode` hierarchies and computes deterministic SVG positions.
+- `src/ui/run-summary.ts` — turns `RunState` into saved-run list rows.
+- `src/ui/inspector.ts` — maps a selected `TreeNode` into summary/debate/context/leaf inspector sections.
+- `src/ui/server.ts` — serves the UI and JSON routes using Node built-ins.
+
+Run IDs are validated before loading state so encoded path separators cannot escape the `.codex-tree/<run-id>/state.json` namespace.
 
 ## Node State Machine
 
@@ -170,7 +201,7 @@ pie title Judge Score Weights
 
 ```
 src/
-├── cli/index.ts              # CLI entry (commander) — run, list, show, tree, resume
+├── cli/index.ts              # CLI entry (commander) — run, list, show, tree, ui, resume
 ├── types/index.ts            # All shared types (TreeNode, RunConfig, JudgeScore, …)
 ├── schemas/index.ts          # Zod schemas for LLM response validation
 ├── utils/retry.ts            # Exponential-backoff retry wrapper
@@ -179,7 +210,13 @@ src/
 ├── orchestrator/orchestrator.ts  # TreeOrchestrator — main loop, SIGINT, token budget
 ├── execution/codex-client.ts # CodexExecutor — SDK + CLI fallback
 ├── judge/judge.ts            # Judge — LLM scoring
-└── persistence/file-store.ts # FileStore — .codex-tree/<run-id>/state.json
+├── persistence/file-store.ts # FileStore — .codex-tree/<run-id>/state.json
+└── ui/                       # Local saved-run browser UI
+    ├── server.ts             # HTTP server + JSON API routes
+    ├── page.ts               # Dependency-free browser app shell
+    ├── tree-layout.ts        # TreeNode → SVG layout
+    ├── run-summary.ts        # RunState → run list summary
+    └── inspector.ts          # TreeNode → inspector view model
 ```
 
 ## Retry & Resilience

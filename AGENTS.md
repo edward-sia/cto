@@ -2,11 +2,12 @@
 
 ## Project Overview
 
-Tree-of-Thought agent orchestration for software development, powered by OpenAI Codex. A CLI tool where specialised agents (PM, BA, Tech Lead, Developer, Code Reviewer, QA) debate solutions in round-table format, branch when alternatives surface, execute leaf solutions via Codex, and score results with an LLM judge.
+Tree-of-Thought agent orchestration for software development, powered by OpenAI Codex. A CLI tool where specialised agents (PM, BA, Tech Lead, Developer, Code Reviewer, QA) debate solutions in round-table format, branch when alternatives surface, execute leaf solutions via Codex, score results with an LLM judge, and visualize saved runs in a local browser UI.
 
 ## Architecture (3 Layers)
 
 ```
+Interface: CLI + saved-run UI (src/cli/, src/ui/) — commands, local browser viewer
 Layer 1: Orchestrator (src/orchestrator/) — tree traversal, branching, state
 Layer 2: Agent Panel (src/agents/, src/debate/) — round-table debate engine
 Layer 3: Execution (src/execution/, src/judge/) — Codex SDK + LLM scoring
@@ -19,6 +20,7 @@ Layer 3: Execution (src/execution/, src/judge/) — Codex SDK + LLM scoring
 - **Key deps:** openai, @openai/codex-sdk, commander, chalk, ora, nanoid, zod
 - **Persistence:** JSON files in `.codex-tree/<run-id>/state.json`
 - **CLI framework:** Commander.js
+- **UI:** Dependency-free local HTTP server + browser shell in `src/ui/`
 
 ## File Structure
 
@@ -34,7 +36,8 @@ src/
 ├── orchestrator/orchestrator.ts  # Main tree orchestration loop
 ├── execution/codex-client.ts # Codex SDK integration
 ├── judge/judge.ts            # LLM scoring engine
-└── persistence/file-store.ts # JSON file persistence
+├── persistence/file-store.ts # JSON file persistence
+└── ui/                       # Saved-run browser UI (server, page, layout helpers)
 ```
 
 ## Commands
@@ -45,6 +48,7 @@ npx tsx src/cli/index.ts run "<intent>" --depth 3 --branching 2  # Run
 npx tsx src/cli/index.ts list  # List runs
 npx tsx src/cli/index.ts show <run-id>  # Show results
 npx tsx src/cli/index.ts tree <run-id>  # Print tree
+npx tsx src/cli/index.ts ui [run-id]  # Launch saved-run browser UI
 npx tsx src/cli/index.ts resume <run-id>  # Resume
 ```
 
@@ -58,17 +62,19 @@ npx tsx src/cli/index.ts resume <run-id>  # Resume
 6. At max depth → leaf nodes submitted to Codex for implementation
 7. LLM Judge scores each leaf on 5 dimensions (functional completeness, architectural quality, test coverage, intent alignment, simplicity)
 8. Results ranked by weighted composite score
+9. Saved runs can be inspected visually with `cto ui`
 
 ## Key Design Patterns
 
 - **Branching is organic:** Agents surface alternatives via their debate contributions. The moderator (separate LLM call) detects divergence and forks. No hard-coded branching rules.
 - **Context accumulates:** Each child inherits parent context + debate summary. Leaf nodes get the full ancestor path as implementation context.
 - **Brute force exploration (v1):** All branches explored. MCTS-style pruning is planned for v2.
-- **State persistence:** Tree saved to disk after every node. Runs are resumable.
+- **State persistence:** Tree saved to disk after every node. Runs are resumable and viewable through `cto ui`.
+- **UI boundary:** The saved-run UI is read-only. It uses local JSON routes over `.codex-tree` state and validates run IDs before loading files.
 
 ## Current Status
 
-**Phases 1–4 complete.** The CLI runs end-to-end with parallel leaf execution, pre-run cost estimation, branch pruning by moderator confidence, and Codex usage breakdown. Use `--dry-run` for tree-shape testing without LLM or Codex calls.
+**Phases 1–4 plus saved-run UI complete.** The CLI runs end-to-end with parallel leaf execution, pre-run cost estimation, branch pruning by moderator confidence, Codex usage breakdown, and a local browser UI for inspecting saved trees. Use `--dry-run` for tree-shape testing without LLM or Codex calls.
 
 ## Work Plan
 
@@ -98,6 +104,13 @@ npx tsx src/cli/index.ts resume <run-id>  # Resume
 - [x] Codex Cloud best-of-N — `--cloud-env <id> --cloud-attempts <n>` routes leaf execution through `codex cloud exec`. Cloud results must be applied locally with `codex cloud apply <task-id>` after the task completes (see executor output).
 - [x] Codex token usage breakdown — `CodexExecutionResult.usage` captures input / cached / output / reasoning tokens per leaf; aggregated as `RunState.codexUsageTotal` and printed in the final summary.
 
+### Saved-run UI ✅
+- [x] `cto ui [run-id]` launches a local browser explorer for `.codex-tree` runs
+- [x] Saved run picker with status, leaf count, and best score
+- [x] SVG tree canvas with node selection, phase/status styling, score badges, zoom controls, and show-pruned toggle
+- [x] Node inspector tabs for summary, debate, context, and leaf execution/scoring details
+- [x] Local JSON API routes with run-id validation before state loading
+
 ## Conventions
 
 - All files use `.ts` extension with ESM (`"type": "module"` in package.json)
@@ -114,10 +127,15 @@ npx tsx src/cli/index.ts resume <run-id>  # Resume
 
 ## Testing
 
-No tests yet. When adding:
+Use vitest. Current coverage includes saved-run UI helpers and server behavior:
+- `src/ui/tree-layout.ts`
+- `src/ui/run-summary.ts`
+- `src/ui/inspector.ts`
+- `src/ui/server.ts`
+
+When adding more:
 - Unit tests for `parseAgentResponse`, `buildAgentPrompt`, moderator JSON parsing
 - Integration test: mock OpenAI client → run a depth-2 tree → verify tree structure
-- Use vitest
 
 ## Known Issues
 

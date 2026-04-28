@@ -69,6 +69,8 @@ cto ui
 
 This launches a local saved-run explorer with a run picker, tree canvas, and node inspector.
 
+![Saved-run UI showing a branch tree and node inspector](docs/assets/cto-ui-saved-run.png)
+
 ## CLI Reference
 
 ### `run` — start a new orchestration

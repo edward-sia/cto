@@ -8,6 +8,7 @@ import { summarizeRun } from "./run-summary.js";
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 43187;
 const PORT_ATTEMPTS = 20;
+const RUN_ID_PATTERN = /^run-[A-Za-z0-9_-]+$/;
 
 const execFileAsync = promisify(execFile);
 
@@ -79,9 +80,14 @@ async function handleRequest(
       return;
     }
 
-    const runId = matchRunRoute(url.pathname);
-    if (runId) {
-      const run = await store.load(runId);
+    const runRoute = matchRunRoute(url.pathname);
+    if (runRoute.matched) {
+      if (!runRoute.runId) {
+        sendJson(response, 404, { error: "Run not found" });
+        return;
+      }
+
+      const run = await store.load(runRoute.runId);
       if (!run) {
         sendJson(response, 404, { error: "Run not found" });
         return;
@@ -97,18 +103,27 @@ async function handleRequest(
   }
 }
 
-function matchRunRoute(pathname: string): string | null {
+type RunRouteMatch = { matched: false } | { matched: true; runId: string | null };
+
+function matchRunRoute(pathname: string): RunRouteMatch {
   const prefix = "/api/runs/";
   if (!pathname.startsWith(prefix)) {
-    return null;
+    return { matched: false };
   }
 
   const encodedRunId = pathname.slice(prefix.length);
   if (encodedRunId.length === 0 || encodedRunId.includes("/")) {
-    return null;
+    return { matched: true, runId: null };
   }
 
-  return decodeURIComponent(encodedRunId);
+  let runId: string;
+  try {
+    runId = decodeURIComponent(encodedRunId);
+  } catch {
+    return { matched: true, runId: null };
+  }
+
+  return RUN_ID_PATTERN.test(runId) ? { matched: true, runId } : { matched: true, runId: null };
 }
 
 async function listenOnAvailablePort(server: Server, host: string, preferredPort: number): Promise<number> {

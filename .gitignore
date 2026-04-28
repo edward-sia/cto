@@ -8,6 +8,7 @@ coverage/
 
 # Local runtime state
 .codex-tree/
+.superpowers/
 .env
 .env.*
 !.env.example

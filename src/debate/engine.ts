@@ -1,0 +1,374 @@
+/**
+ * Round-Table Debate Engine
+ *
+ * At each tree node, a panel of specialised agents debates the current state.
+ * The debate continues in rounds until consensus, divergence, or max rounds.
+ */
+
+import OpenAI from "openai";
+import { nanoid } from "nanoid";
+import type {
+  AgentRole,
+  AgentInput,
+  DebateMessage,
+  DebateRound,
+  DebateTranscript,
+  Alternative,
+  ModeratorAssessment,
+  NodeContext,
+  TreePhase,
+} from "../types/index.js";
+import {
+  AGENT_DEFINITIONS,
+  buildAgentPrompt,
+  parseAgentResponse,
+} from "../agents/definitions.js";
+import { ModeratorAssessmentSchema } from "../schemas/index.js";
+import { withRetry } from "../utils/retry.js";
+
+function mergeContextUpdates(
+  target: Partial<NodeContext>,
+  source: Partial<NodeContext>
+): void {
+  if (source.prd) target.prd = source.prd;
+  if (source.implementationSpec) target.implementationSpec = source.implementationSpec;
+  if (source.testStrategy) target.testStrategy = source.testStrategy;
+  if (source.acceptanceCriteria?.length) {
+    target.acceptanceCriteria = [
+      ...new Set([...(target.acceptanceCriteria ?? []), ...source.acceptanceCriteria]),
+    ];
+  }
+  if (source.architectureDecisions?.length) {
+    target.architectureDecisions = [
+      ...new Set([...(target.architectureDecisions ?? []), ...source.architectureDecisions]),
+    ];
+  }
+}
+
+const MODERATOR_SYSTEM_PROMPT = `You are the Debate Moderator. You do NOT participate in the debate — you ASSESS it.
+
+After each round of debate, you analyse the transcript and determine:
+
+1. **CONSENSUS** — All agents agree on the direction. No meaningful alternatives were proposed,
+   or alternatives were proposed but all agents converged on one.
+
+2. **DIVERGING** — Two or more agents proposed genuinely different approaches that cannot be
+   reconciled into one. These represent legitimate alternatives worth exploring as separate branches.
+
+3. **CONTINUE** — The discussion is productive but unresolved. More rounds are needed.
+
+## Rules for DIVERGING (read carefully — branching is expensive)
+- At least TWO agents must have independently proposed or explicitly supported distinct alternatives
+- A single agent proposing alternatives alone is NOT sufficient for DIVERGING
+- The alternatives must differ in a way that leads to meaningfully different implementations
+  (e.g., REST vs GraphQL, monolith vs microservices, sync vs async processing)
+- Style differences, library choices within the same pattern, and naming are NOT branches
+- Round 1: strongly prefer CONTINUE unless divergence is completely obvious and irreconcilable
+- When in doubt between DIVERGING and CONTINUE, choose CONTINUE
+
+## Rules for CONSENSUS
+- Consensus does NOT require unanimity — it means no better alternative is worth a full separate branch
+- One agent raising a concern without proposing a concrete alternative = consensus with noted risks
+- When in doubt between CONSENSUS and CONTINUE, choose CONSENSUS
+
+## Calibration
+Over-branching wastes compute and fractures focus. Under-branching misses genuine trade-offs.
+Target: branch only when the team would genuinely implement both paths completely differently.
+
+## Output Format
+Respond with ONLY valid JSON:
+{
+  "outcome": "consensus" | "diverging" | "continue",
+  "alternatives": [
+    {
+      "id": "alt-<short-id>",
+      "label": "Short label",
+      "description": "What this approach entails",
+      "proposedBy": "<agent-role>",
+      "supportedBy": ["<agent-role>"],
+      "rationale": "Why this is worth exploring as a separate branch",
+      "confidence": 0.0-1.0
+    }
+  ],
+  "summary": "Brief summary of the round's discussion and outcome"
+}
+
+## Confidence
+Each alternative MUST include a confidence score in [0, 1] reflecting your belief
+that this branch is worth fully exploring (debating + implementing + judging):
+- 0.8-1.0: clearly worth exploring; strongly grounded in the debate
+- 0.4-0.7: plausible but uncertain — might pay off, might be wasted compute
+- 0.0-0.3: weak; included only because an agent insisted
+
+Be calibrated: if you're emitting many alternatives, most should NOT be 0.9+.`;
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+export interface DebateEngineConfig {
+  openai: OpenAI;
+  reasoningModel: string;
+  maxDebateRounds: number;
+  maxBranching: number;
+  dryRun?: boolean;
+  onProgress?: (event: DebateProgressEvent) => void;
+}
+
+export type DebateProgressEvent =
+  | { type: "round_start"; round: number; totalRounds: number }
+  | { type: "agent_speaking"; agent: AgentRole; round: number }
+  | { type: "agent_spoke"; agent: AgentRole; round: number; message: string }
+  | { type: "moderator_assessment"; round: number; outcome: ModeratorAssessment }
+  | { type: "debate_complete"; outcome: "consensus" | "branched" };
+
+// ─── Engine ──────────────────────────────────────────────────────────────────
+
+export class DebateEngine {
+  private openai: OpenAI;
+  private model: string;
+  private maxRounds: number;
+  private maxBranching: number;
+  private dryRun: boolean;
+  private onProgress?: (event: DebateProgressEvent) => void;
+  private totalTokens = 0;
+
+  constructor(config: DebateEngineConfig) {
+    this.openai = config.openai;
+    this.model = config.reasoningModel;
+    this.maxRounds = config.maxDebateRounds;
+    this.maxBranching = config.maxBranching;
+    this.dryRun = config.dryRun ?? false;
+    this.onProgress = config.onProgress;
+  }
+
+  async runDebate(
+    phase: TreePhase,
+    context: NodeContext,
+    participatingAgents: AgentRole[]
+  ): Promise<DebateTranscript> {
+    const rounds: DebateRound[] = [];
+    let allMessages: DebateMessage[] = [];
+    const accumulatedContextUpdates: Partial<NodeContext> = {};
+
+    for (let roundNum = 1; roundNum <= this.maxRounds; roundNum++) {
+      this.onProgress?.({ type: "round_start", round: roundNum, totalRounds: this.maxRounds });
+
+      const roundMessages: DebateMessage[] = [];
+      const roundAlternatives: Alternative[] = [];
+
+      for (const agentRole of participatingAgents) {
+        this.onProgress?.({ type: "agent_speaking", agent: agentRole, round: roundNum });
+
+        const agentDef = AGENT_DEFINITIONS[agentRole];
+        const input: AgentInput = {
+          priorRoundsHistory: allMessages,
+          currentRoundSoFar: [...roundMessages],
+          context,
+          phase,
+          roundNumber: roundNum,
+        };
+
+        const { system, user } = buildAgentPrompt(agentDef, input);
+        const rawResponse = this.dryRun
+          ? this.mockAgentResponse(agentRole, roundNum, phase)
+          : await this.callLLM(system, user);
+        const parsed = parseAgentResponse(agentRole, rawResponse);
+
+        if (parsed.contextUpdates) {
+          mergeContextUpdates(accumulatedContextUpdates, parsed.contextUpdates);
+        }
+
+        const message: DebateMessage = {
+          role: agentRole,
+          content: parsed.message,
+          proposedAlternative: parsed.proposedAlternatives?.[0]?.label,
+          timestamp: new Date().toISOString(),
+        };
+
+        roundMessages.push(message);
+
+        if (parsed.proposedAlternatives) {
+          for (const alt of parsed.proposedAlternatives) {
+            roundAlternatives.push({
+              id: `alt-${nanoid(8)}`,
+              label: alt.label,
+              description: alt.description,
+              proposedBy: agentRole,
+              supportedBy: [agentRole],
+              rationale: alt.rationale,
+              confidence: 0.5,
+            });
+          }
+        }
+
+        this.onProgress?.({
+          type: "agent_spoke",
+          agent: agentRole,
+          round: roundNum,
+          message: parsed.message.slice(0, 200) + "...",
+        });
+      }
+
+      const assessment = await this.assessRound(
+        roundNum,
+        [...allMessages, ...roundMessages],
+        roundAlternatives,
+        context
+      );
+
+      this.onProgress?.({ type: "moderator_assessment", round: roundNum, outcome: assessment });
+
+      rounds.push({
+        roundNumber: roundNum,
+        messages: roundMessages,
+        outcome: assessment.outcome,
+        alternatives: assessment.alternatives,
+      });
+
+      allMessages = [...allMessages, ...roundMessages];
+
+      if (assessment.outcome === "consensus") {
+        this.onProgress?.({ type: "debate_complete", outcome: "consensus" });
+        return { rounds, finalOutcome: "consensus", summary: assessment.summary, tokenUsage: this.totalTokens, contextUpdates: accumulatedContextUpdates };
+      }
+
+      if (assessment.outcome === "diverging") {
+        this.onProgress?.({ type: "debate_complete", outcome: "branched" });
+        return { rounds, finalOutcome: "branched", summary: assessment.summary, tokenUsage: this.totalTokens, contextUpdates: accumulatedContextUpdates };
+      }
+    }
+
+    this.onProgress?.({ type: "debate_complete", outcome: "consensus" });
+    return {
+      rounds,
+      finalOutcome: "consensus",
+      summary: "Max debate rounds reached. Proceeding with best available direction.",
+      tokenUsage: this.totalTokens,
+      contextUpdates: accumulatedContextUpdates,
+    };
+  }
+
+  private async assessRound(
+    roundNumber: number,
+    allMessages: DebateMessage[],
+    alternatives: Alternative[],
+    context: NodeContext
+  ): Promise<ModeratorAssessment> {
+    const transcript = allMessages
+      .map((m) => `[${m.role.toUpperCase()}]: ${m.content}`)
+      .join("\n\n");
+
+    const alternativesSummary =
+      alternatives.length > 0
+        ? `\n\n## Alternatives Proposed This Round\n${alternatives.map((a) => `- [${a.label}] by ${a.proposedBy}: ${a.description}`).join("\n")}`
+        : "";
+
+    const isLastRound = roundNumber >= this.maxRounds;
+
+    const userPrompt = `# Debate Transcript
+
+## Context
+Original intent: ${context.originalIntent}
+${context.branchDecision ? `Branch decision: ${context.branchDecision}` : ""}
+
+## Full Transcript
+${transcript}
+${alternativesSummary}
+
+## Assessment Required
+This is round ${roundNumber} of ${this.maxRounds}. Assess the debate state.
+${isLastRound ? "\n⚠️ THIS IS THE FINAL ROUND. You MUST choose consensus or diverging. No continue." : ""}`;
+
+    const rawResponse = this.dryRun
+      ? this.mockModeratorResponse(roundNumber, alternatives)
+      : await this.callLLM(MODERATOR_SYSTEM_PROMPT, userPrompt);
+
+    try {
+      const jsonStr = rawResponse.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+      const parsed = ModeratorAssessmentSchema.parse(JSON.parse(jsonStr));
+      if (parsed.outcome === "diverging") {
+        parsed.alternatives = parsed.alternatives.slice(0, this.maxBranching);
+      }
+      if (isLastRound && parsed.outcome === "continue") {
+        parsed.outcome = "consensus";
+      }
+      return parsed as ModeratorAssessment;
+    } catch {
+      return {
+        outcome: isLastRound ? "consensus" : "continue",
+        alternatives: [],
+        summary: `Moderator assessment parse failed. ${isLastRound ? "Defaulting to consensus." : "Continuing debate."}`,
+      };
+    }
+  }
+
+  private async callLLM(system: string, user: string): Promise<string> {
+    const response = await withRetry(() =>
+      this.openai.chat.completions.create({
+        model: this.model,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        temperature: 0.7,
+        max_tokens: 4096,
+      })
+    );
+    this.totalTokens += response.usage?.total_tokens ?? 0;
+    return response.choices[0]?.message?.content ?? "";
+  }
+
+  get tokensUsed(): number {
+    return this.totalTokens;
+  }
+
+  private mockAgentResponse(
+    agent: AgentRole,
+    round: number,
+    phase: TreePhase
+  ): string {
+    // Surface alternatives at the first round of requirements & architecture
+    // so the orchestrator gets to exercise its branching path. Later phases
+    // and rounds concur to keep the dry-run tree shallow.
+    const shouldPropose =
+      round === 1 &&
+      ((phase === "requirements" && agent === "product-manager") ||
+        (phase === "architecture" && agent === "tech-lead"));
+
+    if (shouldPropose) {
+      return `[DRY-RUN ${agent}] I see two viable directions worth exploring.
+
+ALTERNATIVE [Approach A]: Lean, pragmatic path optimised for speed of delivery — RATIONALE: Fastest time to value with acceptable trade-offs.
+
+ALTERNATIVE [Approach B]: Robust path optimised for long-term flexibility — RATIONALE: Better fit if requirements expand later.`;
+    }
+
+    return `[DRY-RUN ${agent}] I concur with the current direction. No new alternatives to surface this round.`;
+  }
+
+  private mockModeratorResponse(
+    round: number,
+    alternatives: Alternative[]
+  ): string {
+    if (alternatives.length >= 2) {
+      const alts = alternatives.slice(0, this.maxBranching).map((a, i) => ({
+        id: a.id,
+        label: a.label,
+        description: a.description,
+        proposedBy: a.proposedBy,
+        supportedBy: a.supportedBy,
+        rationale: a.rationale,
+        confidence: i === 0 ? 0.8 : 0.6,
+      }));
+      return JSON.stringify({
+        outcome: "diverging",
+        alternatives: alts,
+        summary: `[dry-run] Round ${round}: agents surfaced ${alts.length} distinct approaches; branching.`,
+      });
+    }
+    return JSON.stringify({
+      outcome: "consensus",
+      alternatives: [],
+      summary: `[dry-run] Round ${round}: agents converged on a single direction.`,
+    });
+  }
+}

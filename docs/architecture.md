@@ -1,0 +1,205 @@
+# Architecture
+
+## System Overview
+
+Three layers with strict downward dependencies:
+
+```
+┌─────────────────────────────────────────────┐
+│  Layer 1 — Orchestrator                     │
+│  src/orchestrator/orchestrator.ts           │
+│  Tree traversal · branching · state mgmt    │
+└────────────────────┬────────────────────────┘
+                     │
+┌────────────────────▼────────────────────────┐
+│  Layer 2 — Agent Panel                      │
+│  src/agents/definitions.ts                 │
+│  src/debate/engine.ts                       │
+│  Round-table debate · moderator scoring     │
+└────────────────────┬────────────────────────┘
+                     │
+┌────────────────────▼────────────────────────┐
+│  Layer 3 — Execution & Judging              │
+│  src/execution/codex-client.ts             │
+│  src/judge/judge.ts                         │
+│  Codex SDK · LLM scoring                   │
+└─────────────────────────────────────────────┘
+```
+
+## End-to-End Flow
+
+```mermaid
+flowchart TD
+    A([User intent]) --> B[Create root node\ndepth 0]
+    B --> C{Debate round}
+    C --> D[Each agent speaks\nin round-robin order]
+    D --> E[Moderator assesses\nround transcript]
+    E --> F{Outcome?}
+    F -- consensus --> G[Single child node\ndepth + 1]
+    F -- continue --> C
+    F -- diverging --> H[Branch: one child\nper alternative]
+    G --> I{At max depth?}
+    H --> I
+    I -- no --> C
+    I -- yes --> J[Leaf node]
+    J --> K[Codex execution\nvia SDK or CLI]
+    K --> L[LLM Judge scores\n5 dimensions]
+    L --> M([Ranked results])
+```
+
+## Node State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending
+    pending --> debating : processNode()
+    debating --> branched : moderator → diverging
+    debating --> consensus : moderator → consensus
+    branched --> debating : child nodes
+    consensus --> debating : child node
+    debating --> completed : max depth reached
+    consensus --> executing : isLeaf()
+    executing --> completed : Codex returns
+    completed --> scored : judge.score()
+    scored --> [*]
+```
+
+## Debate Round Detail
+
+```mermaid
+sequenceDiagram
+    participant O as Orchestrator
+    participant DE as DebateEngine
+    participant A1 as Agent (PM)
+    participant A2 as Agent (BA)
+    participant AN as Agent (QA)
+    participant M as Moderator LLM
+
+    O->>DE: runDebate(phase, context, agents)
+    loop Each round (up to maxRounds)
+        DE->>A1: prompt(priorRoundsHistory=[], currentRoundSoFar=[])
+        A1-->>DE: response (ALTERNATIVE [...] | CONTEXT_UPDATE [...])
+        DE->>A2: prompt(priorRoundsHistory=[], currentRoundSoFar=[A1])
+        A2-->>DE: response (sees A1's contribution explicitly)
+        DE->>AN: prompt(priorRoundsHistory=[], currentRoundSoFar=[A1,A2])
+        AN-->>DE: response (sees A1+A2 explicitly)
+        DE->>M: assessRound(fullTranscript, alternatives)
+        M-->>DE: {outcome, alternatives[], summary}
+        alt outcome == consensus
+            DE-->>O: {finalOutcome="consensus", contextUpdates}
+        else outcome == diverging (requires 2+ agents supporting)
+            DE-->>O: {finalOutcome="branched", alternatives[], contextUpdates}
+        else outcome == continue
+            DE->>DE: next round (priorRoundsHistory grows)
+        end
+    end
+```
+
+## Context Propagation
+
+Agents emit structured updates using `CONTEXT_UPDATE [field]: value` lines. These are parsed, accumulated across all rounds, and merged into every child node's `NodeContext` so downstream phases have richer context.
+
+```
+CONTEXT_UPDATE [prd]: The API must support pagination via cursor-based tokens
+CONTEXT_UPDATE [acceptance-criteria]: Given a valid auth token, when GET /todos is called, then it returns 200 with an array
+CONTEXT_UPDATE [architecture-decision]: Use JWT for stateless auth — no session store needed
+CONTEXT_UPDATE [implementation-spec]: Use Prisma ORM with connection pooling via PgBouncer
+CONTEXT_UPDATE [test-strategy]: Unit tests for handlers, integration tests against real Postgres via testcontainers
+```
+
+Supported fields: `prd`, `acceptance-criteria`, `architecture-decision`, `implementation-spec`, `test-strategy`.
+Array fields (`acceptance-criteria`, `architecture-decision`) are deduplicated and appended; scalar fields take the last written value.
+
+## Tree Structure Example
+
+A run with `--depth 4 --branching 2` on *"Build a REST API"*:
+
+```
+root (depth 0) — requirements debate
+├── REST approach (depth 1) — architecture debate
+│   ├── PostgreSQL backend (depth 2) — implementation debate
+│   │   └── leaf → Codex exec → score 8.2/10 🥇
+│   └── MongoDB backend (depth 2) — implementation debate
+│       └── leaf → Codex exec → score 6.7/10 🥉
+└── GraphQL approach (depth 1) — architecture debate
+    ├── Apollo Server (depth 2) — implementation debate
+    │   └── leaf → Codex exec → score 7.8/10 🥈
+    └── Pothos schema-first (depth 2) — implementation debate
+        └── leaf → Codex exec → score 5.9/10
+```
+
+## Agent Participation by Phase
+
+```mermaid
+graph LR
+    subgraph requirements["Requirements (depth 0-1)"]
+        PM[Product Manager]
+        BA1[Business Analyst]
+        QA1[QA Engineer]
+    end
+    subgraph architecture["Architecture (depth 2-3)"]
+        TL[Tech Lead]
+        BA2[Business Analyst]
+        CR1[Code Reviewer]
+        QA2[QA Engineer]
+    end
+    subgraph implementation["Implementation (depth 4-5)"]
+        DEV[Developer]
+        TL2[Tech Lead]
+        CR2[Code Reviewer]
+    end
+    subgraph validation["Validation (depth 6-7)"]
+        QA3[QA Engineer]
+        CR3[Code Reviewer]
+        DEV2[Developer]
+    end
+```
+
+## Scoring Weights
+
+```mermaid
+pie title Judge Score Weights
+    "Functional Completeness" : 30
+    "Architectural Quality" : 20
+    "Test Coverage" : 20
+    "Intent Alignment" : 20
+    "Simplicity" : 10
+```
+
+## File Structure
+
+```
+src/
+├── cli/index.ts              # CLI entry (commander) — run, list, show, tree, resume
+├── types/index.ts            # All shared types (TreeNode, RunConfig, JudgeScore, …)
+├── schemas/index.ts          # Zod schemas for LLM response validation
+├── utils/retry.ts            # Exponential-backoff retry wrapper
+├── agents/definitions.ts     # Agent system prompts + buildAgentPrompt + parseAgentResponse
+├── debate/engine.ts          # DebateEngine — round-table loop + moderator assessment
+├── orchestrator/orchestrator.ts  # TreeOrchestrator — main loop, SIGINT, token budget
+├── execution/codex-client.ts # CodexExecutor — SDK + CLI fallback
+├── judge/judge.ts            # Judge — LLM scoring
+└── persistence/file-store.ts # FileStore — .codex-tree/<run-id>/state.json
+```
+
+## Retry & Resilience
+
+All LLM calls go through `withRetry` (3 attempts, exponential backoff: 1 s → 2 s → 4 s). Parse failures fall back gracefully — the moderator defaults to `continue` (or `consensus` on the last round) rather than crashing the tree.
+
+```
+LLM call
+  └─ attempt 1 → fail → wait 1s
+  └─ attempt 2 → fail → wait 2s
+  └─ attempt 3 → fail → throw
+                          └─ caught by caller → fallback value returned
+```
+
+## Graceful Shutdown
+
+Pressing **Ctrl+C** during a run triggers a `SIGINT` handler that:
+1. Sets run status to `"paused"`
+2. Saves current tree state to disk
+3. Prints the resume command (`cto resume <run-id>`)
+4. Exits with code 130
+
+The handler is removed after a normal run completes.

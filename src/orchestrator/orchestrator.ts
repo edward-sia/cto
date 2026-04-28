@@ -16,11 +16,15 @@ import type {
   Alternative,
   JudgeScore,
   CodexUsage,
+  TaskAnalysis,
 } from "../types/index.js";
+import { AGENT_DEFINITIONS } from "../agents/definitions.js";
+import { TaskAnalyzer } from "../analyzer/task-analyzer.js";
 import { DebateEngine, type DebateProgressEvent } from "../debate/engine.js";
 import { CodexExecutor } from "../execution/codex-client.js";
 import { Judge } from "../judge/judge.js";
 import { FileStore } from "../persistence/file-store.js";
+import { Synthesizer } from "../synthesis/synthesizer.js";
 
 const DEFAULT_PHASE_DEPTHS: Record<TreePhase, [number, number]> = {
   requirements: [0, 1],
@@ -67,6 +71,7 @@ async function runWithConcurrency<T>(
 }
 
 export interface OrchestratorCallbacks {
+  onAnalysisComplete?: (analysis: TaskAnalysis) => void;
   onDebateProgress?: (nodeId: string, event: DebateProgressEvent) => void;
   onNodeCreated?: (node: TreeNode) => void;
   onBranching?: (parentId: string, alternatives: Alternative[]) => void;
@@ -83,6 +88,8 @@ export class TreeOrchestrator {
   private store: FileStore;
   private codex: CodexExecutor;
   private judge: Judge;
+  private analyzer: TaskAnalyzer;
+  private synthesizer: Synthesizer;
   private callbacks: OrchestratorCallbacks;
   private runState!: RunState;
 
@@ -99,11 +106,16 @@ export class TreeOrchestrator {
       cloudAttempts: this.config.cloudAttempts,
     });
     this.judge = new Judge(openai, this.config.judgeModel, this.config.dryRun);
+    this.analyzer = new TaskAnalyzer(openai, this.config.reasoningModel, this.config.dryRun);
+    this.synthesizer = new Synthesizer(openai, this.config.reasoningModel, this.config.dryRun);
     this.callbacks = callbacks;
   }
 
   async run(intent: string): Promise<RunState> {
     const runId = `run-${nanoid(10)}`;
+    const analysis = await this.analyzer.analyze(intent);
+    this.callbacks.onAnalysisComplete?.(analysis);
+
     const root = this.createNode(null, 0, {
       originalIntent: intent,
       ancestorSummaries: [],
@@ -118,6 +130,8 @@ export class TreeOrchestrator {
       startedAt: new Date().toISOString(),
       totalTokensUsed: 0,
       status: "running",
+      runMode: analysis.runMode,
+      selectedAgents: analysis.selectedAgents,
     };
 
     await this.store.save(this.runState);
@@ -137,9 +151,13 @@ export class TreeOrchestrator {
     try {
       await this.processNode(root);
       this.runState.leafNodeIds = this.collectLeafIds(root);
-      await this.executeLeaves(root);
-      await this.judgeLeaves(root);
-      this.runState.rankedResults = this.rankResults(root);
+      if (this.runState.runMode === "implementation") {
+        await this.executeLeaves(root);
+        await this.judgeLeaves(root);
+        this.runState.rankedResults = this.rankResults(root);
+      } else {
+        await this.synthesizeLeaves(root);
+      }
       this.runState.status = "completed";
       this.runState.completedAt = new Date().toISOString();
     } catch (error) {
@@ -181,7 +199,7 @@ export class TreeOrchestrator {
     node.phase = phase;
     node.status = "debating";
 
-    const agents = PHASE_AGENT_MAP[phase];
+    const agents = this.getAgentsForPhase(phase);
 
     const debateEngine = new DebateEngine({
       openai: this.openai,
@@ -328,6 +346,30 @@ export class TreeOrchestrator {
     await runWithConcurrency(tasks, this.config.leafConcurrency);
   }
 
+  private async synthesizeLeaves(root: TreeNode): Promise<void> {
+    const leaves = this.collectLeaves(root).filter((n) => n.status !== "pruned");
+    const tasks = leaves.map((leaf) => async () => {
+      this.callbacks.onLeafExecuting?.(leaf.id);
+      leaf.status = "executing";
+      try {
+        leaf.executionResult = await this.synthesizer.synthesize(leaf);
+        leaf.status = "completed";
+      } catch (error) {
+        leaf.status = "completed";
+        leaf.executionResult = {
+          threadId: "error",
+          success: false,
+          filesChanged: [],
+          output: error instanceof Error ? error.message : String(error),
+          durationMs: 0,
+        };
+        this.callbacks.onError?.(leaf.id, error instanceof Error ? error : new Error(String(error)));
+      }
+      await this.store.save(this.runState);
+    });
+    await runWithConcurrency(tasks, this.config.leafConcurrency);
+  }
+
   private addToCodexTotal(usage: CodexUsage): void {
     if (!this.runState.codexUsageTotal) {
       this.runState.codexUsageTotal = {
@@ -357,6 +399,14 @@ export class TreeOrchestrator {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+  }
+
+  private getAgentsForPhase(phase: TreePhase): AgentRole[] {
+    const selected = this.runState.selectedAgents ?? [];
+    const agents = selected.filter((role) =>
+      AGENT_DEFINITIONS[role].primaryPhases.includes(phase)
+    );
+    return agents.length > 0 ? agents : PHASE_AGENT_MAP[phase];
   }
 
   private getPhaseForDepth(depth: number): TreePhase {

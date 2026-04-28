@@ -21,6 +21,7 @@ import { TreeOrchestrator, DEFAULT_RUN_CONFIG } from "../orchestrator/orchestrat
 import { FileStore } from "../persistence/file-store.js";
 import type { RunState, TreeNode, RunConfig } from "../types/index.js";
 import { AGENT_DISPLAY_NAMES } from "../types/index.js";
+import { startUiServer } from "../ui/server.js";
 import { estimateRunCost, formatCostEstimate } from "../utils/cost.js";
 
 const program = new Command();
@@ -217,6 +218,39 @@ program
     console.log(chalk.bold("\n🌳 Solution Tree\n"));
     printTree(state.root, "");
     console.log();
+  });
+
+// ─── UI ──────────────────────────────────────────────────────────────────────
+
+program
+  .command("ui")
+  .description("Launch the saved-run browser UI")
+  .argument("[run-id]", "Run ID to open")
+  .option("-p, --port <n>", "Preferred local port", "43187")
+  .option("--no-open", "Print the URL without opening a browser")
+  .action(async (runId: string | undefined, opts) => {
+    const server = await startUiServer({
+      runId,
+      port: parseInt(opts.port, 10),
+      openBrowser: Boolean(opts.open),
+    });
+
+    console.log(chalk.cyan(server.url));
+    console.log(chalk.dim("Press Ctrl+C to stop the UI server."));
+
+    await new Promise<void>(() => {
+      let isClosing = false;
+      const shutdown = (): void => {
+        if (isClosing) return;
+        isClosing = true;
+        process.off("SIGINT", shutdown);
+        void server.close().finally(() => {
+          process.exit(0);
+        });
+      };
+
+      process.on("SIGINT", shutdown);
+    });
   });
 
 // ─── Resume ──────────────────────────────────────────────────────────────────

@@ -7,6 +7,7 @@ coverage/
 *.tsbuildinfo
 
 # Local runtime state
+.cambrian-tree/
 .codex-tree/
 .superpowers/
 .worktrees/

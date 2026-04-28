@@ -1,8 +1,8 @@
-# AGENTS.md — Codex Tree Orchestrator (CTO)
+# AGENTS.md — Cambrian Tree Orchestrator (CTO)
 
 ## Project Overview
 
-Tree-of-Thought agent orchestration for software development, powered by OpenAI Codex. A CLI tool where specialised agents (PM, BA, Tech Lead, Developer, Code Reviewer, QA) debate solutions in round-table format, branch when alternatives surface, execute leaf solutions via Codex, score results with an LLM judge, and visualize saved runs in a local browser UI.
+Tree-of-Thought agent orchestration for software development, with leaf execution handled by a configurable execution layer. A CLI tool where specialised agents (PM, BA, Tech Lead, Developer, Code Reviewer, QA) debate solutions in round-table format, branch when alternatives surface, execute leaf solutions, score results with an LLM judge, and visualize saved runs in a local browser UI.
 
 ## Architecture (3 Layers)
 
@@ -18,7 +18,7 @@ Layer 3: Execution (src/execution/, src/judge/) — Codex SDK + LLM scoring
 - **Language:** TypeScript (ESM, NodeNext modules)
 - **Runtime:** Node.js 18+
 - **Key deps:** openai, @openai/codex-sdk, commander, chalk, ora, nanoid, zod
-- **Persistence:** JSON files in `.codex-tree/<run-id>/state.json`
+- **Persistence:** JSON files in `.cambrian-tree/<run-id>/state.json`
 - **CLI framework:** Commander.js
 - **UI:** Dependency-free local HTTP server + browser shell in `src/ui/`
 
@@ -70,7 +70,7 @@ npx tsx src/cli/index.ts resume <run-id>  # Resume
 - **Context accumulates:** Each child inherits parent context + debate summary. Leaf nodes get the full ancestor path as implementation context.
 - **Brute force exploration (v1):** All branches explored. MCTS-style pruning is planned for v2.
 - **State persistence:** Tree saved to disk after every node. Runs are resumable and viewable through `cto ui`.
-- **UI boundary:** The saved-run UI is read-only. It uses local JSON routes over `.codex-tree` state and validates run IDs before loading files.
+- **UI boundary:** The saved-run UI is read-only. It uses local JSON routes over `.cambrian-tree` state and validates run IDs before loading files.
 
 ## Current Status
 
@@ -105,7 +105,7 @@ npx tsx src/cli/index.ts resume <run-id>  # Resume
 - [x] Codex token usage breakdown — `CodexExecutionResult.usage` captures input / cached / output / reasoning tokens per leaf; aggregated as `RunState.codexUsageTotal` and printed in the final summary.
 
 ### Saved-run UI ✅
-- [x] `cto ui [run-id]` launches a local browser explorer for `.codex-tree` runs
+- [x] `cto ui [run-id]` launches a local browser explorer for `.cambrian-tree` runs
 - [x] Saved run picker with status, leaf count, and best score
 - [x] SVG tree canvas with node selection, phase/status styling, score badges, zoom controls, and show-pruned toggle
 - [x] Node inspector tabs for summary, debate, context, and leaf execution/scoring details

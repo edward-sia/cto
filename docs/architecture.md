@@ -56,12 +56,12 @@ flowchart TD
 
 ## Saved-Run UI
 
-`cto ui` is a local-only viewer for persisted run state. It does not participate in orchestration; it reads `.codex-tree/<run-id>/state.json` through the same file-store boundary used by the CLI.
+`cto ui` is a local-only viewer for persisted run state. It does not participate in orchestration; it reads `.cambrian-tree/<run-id>/state.json` through the same file-store boundary used by the CLI.
 
 ```mermaid
 flowchart LR
     CLI["cto ui [run-id]"] --> Server["src/ui/server.ts\nLocal HTTP server"]
-    Server --> Store["FileStore\n.codex-tree/*/state.json"]
+    Server --> Store["FileStore\n.cambrian-tree/*/state.json"]
     Server --> Page["src/ui/page.ts\nHTML/CSS/browser script"]
     Browser["Browser"] --> Runs["GET /api/runs"]
     Browser --> Run["GET /api/runs/:runId"]
@@ -76,7 +76,7 @@ The UI keeps browser-specific behavior isolated in `src/ui/page.ts`, while testa
 - `src/ui/inspector.ts` — maps a selected `TreeNode` into summary/debate/context/leaf inspector sections.
 - `src/ui/server.ts` — serves the UI and JSON routes using Node built-ins.
 
-Run IDs are validated before loading state so encoded path separators cannot escape the `.codex-tree/<run-id>/state.json` namespace.
+Run IDs are validated before loading state so encoded path separators cannot escape the `.cambrian-tree/<run-id>/state.json` namespace.
 
 ## Node State Machine
 
@@ -210,7 +210,7 @@ src/
 ├── orchestrator/orchestrator.ts  # TreeOrchestrator — main loop, SIGINT, token budget
 ├── execution/codex-client.ts # CodexExecutor — SDK + CLI fallback
 ├── judge/judge.ts            # Judge — LLM scoring
-├── persistence/file-store.ts # FileStore — .codex-tree/<run-id>/state.json
+├── persistence/file-store.ts # FileStore — .cambrian-tree/<run-id>/state.json
 └── ui/                       # Local saved-run browser UI
     ├── server.ts             # HTTP server + JSON API routes
     ├── page.ts               # Dependency-free browser app shell

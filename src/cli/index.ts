@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * CLI Entry Point for Codex Tree Orchestrator (CTO)
+ * CLI Entry Point for Cambrian Tree Orchestrator (CTO)
  *
  * Usage:
  *   cto run "Build a REST API for a todo app with auth"
@@ -28,7 +28,7 @@ const program = new Command();
 
 program
   .name("cto")
-  .description("Codex Tree Orchestrator — Tree-of-Thought agent orchestration for software development")
+  .description("Cambrian Tree Orchestrator — Tree-of-Thought agent orchestration for software development")
   .version("0.1.0");
 
 // ─── Run ─────────────────────────────────────────────────────────────────────
@@ -72,7 +72,7 @@ program
     const fullConfig: RunConfig = { ...DEFAULT_RUN_CONFIG, ...config };
     if (!dryRun) {
       const estimate = estimateRunCost(fullConfig);
-      console.log(chalk.bold.white("\n🌳 Codex Tree Orchestrator — Pre-run Estimate"));
+      console.log(chalk.bold.white("\n🌳 Cambrian Tree Orchestrator — Pre-run Estimate"));
       console.log(chalk.dim(formatCostEstimate(estimate, fullConfig)));
       if (!opts.yes) {
         const ok = await confirm("Proceed?");
@@ -147,7 +147,7 @@ program
       }
     );
 
-    console.log(chalk.bold.white("\n🌳 Codex Tree Orchestrator"));
+    console.log(chalk.bold.white("\n🌳 Cambrian Tree Orchestrator"));
     console.log(chalk.dim(`Intent: ${intent}`));
     console.log(chalk.dim(`Config: depth=${opts.depth}, branching=${opts.branching}, rounds=${opts.rounds}, model=${opts.model}, leaf-concurrency=${opts.leafConcurrency}, prune-threshold=${opts.pruneThreshold}`));
     console.log(chalk.dim(`Working dir: ${opts.workdir}`));

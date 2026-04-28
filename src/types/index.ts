@@ -1,5 +1,5 @@
 /**
- * Core type definitions for the Codex Tree Orchestrator.
+ * Core type definitions for the Cambrian Tree Orchestrator.
  *
  * Mental model: a chess engine for software development.
  * - TreeNode = a board position

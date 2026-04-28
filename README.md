@@ -1,6 +1,6 @@
-# Codex Tree Orchestrator (CTO)
+# Cambrian Tree Orchestrator (CTO)
 
-Tree-of-Thought agent orchestration for software development. A CLI tool where specialised agents debate solutions in round-table format, branch when alternatives emerge, execute leaf paths via OpenAI Codex, rank results with an LLM judge, and visualize saved runs in a local browser UI.
+Tree-of-Thought agent orchestration for software development. A CLI tool where specialised agents debate solutions in round-table format, branch when alternatives emerge, execute leaf paths through the execution layer, rank results with an LLM judge, and visualize saved runs in a local browser UI.
 
 ## How It Works
 
@@ -42,7 +42,7 @@ cto run "Build a hello world Express API" --depth 3 --branching 2
 Before the run starts, the CLI prints a cost estimate and asks for confirmation:
 
 ```
-🌳 Codex Tree Orchestrator — Pre-run Estimate
+🌳 Cambrian Tree Orchestrator — Pre-run Estimate
 Tree size:    ~7 nodes (worst case: 7), ~4 leaves (worst case: 4)
 LLM tokens:   ~145,200 total (124,800 debate, 20,400 judge)
 LLM cost:     ~$0.61
@@ -121,7 +121,7 @@ cto tree run-abc123
 cto ui [run-id] [--port 43187] [--no-open]
 ```
 
-The UI reads saved state from `.codex-tree`, serves a local browser app, and lets you inspect:
+The UI reads saved state from `.cambrian-tree`, serves a local browser app, and lets you inspect:
 
 - saved runs and run metadata
 - the full branch tree as an interactive canvas
@@ -191,7 +191,7 @@ The LLM judge scores each leaf solution on five weighted dimensions:
 
 ## State & Persistence
 
-Runs are saved to `.codex-tree/<run-id>/state.json` after every node. The tree is always resumable from the last completed node.
+Runs are saved to `.cambrian-tree/<run-id>/state.json` after every node. The tree is always resumable from the last completed node.
 
 `cto ui` reads the same saved state and exposes it through a local-only HTTP server:
 
@@ -216,6 +216,6 @@ Runs are saved to `.codex-tree/<run-id>/state.json` after every node. The tree i
 
 **Phase 4 delivered:** Pre-run cost estimator (expected and worst-case node/token/USD projection, model-aware pricing). Confidence-based pruning — moderator emits a 0–1 score per alternative, branches below `--prune-threshold` are dropped before exploration. Parallel leaf execution and judging via a concurrency-limited pool (`--leaf-concurrency`). Codex Cloud best-of-N support via `--cloud-env` and `--cloud-attempts`. Per-leaf token usage breakdown (input / cached input / output / reasoning) aggregated and shown in the final summary.
 
-**Saved-run UI delivered:** `cto ui` launches a dependency-light local browser explorer for saved `.codex-tree` runs. It includes a run picker, SVG tree canvas, node selection, inspector tabs for summary/debate/context/leaf details, local JSON API routes, and run-id validation before loading state.
+**Saved-run UI delivered:** `cto ui` launches a dependency-light local browser explorer for saved `.cambrian-tree` runs. It includes a run picker, SVG tree canvas, node selection, inspector tabs for summary/debate/context/leaf details, local JSON API routes, and run-id validation before loading state.
 
 See [CLAUDE.md](CLAUDE.md) for the full work plan and known issues.

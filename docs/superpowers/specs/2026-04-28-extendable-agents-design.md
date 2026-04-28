@@ -5,7 +5,7 @@
 
 ## Overview
 
-Two related capabilities added to the Codex Tree Orchestrator:
+Two related capabilities added to the Cambrian Tree Orchestrator:
 
 1. **New domain-specialist agents** — 6 new built-in agent types extending the existing 6, covering research, data, security, ML, and platform/DevOps domains.
 2. **`TaskAnalyzer`** — one LLM call before the tree starts that reads the intent, selects the appropriate agent panel, and classifies the run mode (`implementation` vs `exploration`). Replaces the static `PHASE_AGENT_MAP` lookup at runtime.

@@ -29,7 +29,7 @@ afterEach(async () => {
 describe("startUiServer", () => {
   it("rejects encoded path traversal run ids before loading from disk", async () => {
     const cwd = await createTempCwd();
-    await mkdir(join(cwd, ".codex-tree"), { recursive: true });
+    await mkdir(join(cwd, ".cambrian-tree"), { recursive: true });
     await mkdir(join(cwd, "outside-run"), { recursive: true });
     await writeFile(
       join(cwd, "outside-run", "state.json"),
@@ -43,6 +43,26 @@ describe("startUiServer", () => {
 
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({ error: "Run not found" });
+  });
+
+  it("lists saved runs from the legacy store directory", async () => {
+    const cwd = await createTempCwd();
+    const legacyRunDir = join(cwd, ".codex-tree", "run-legacy");
+    await mkdir(legacyRunDir, { recursive: true });
+    await writeFile(
+      join(legacyRunDir, "state.json"),
+      JSON.stringify(run({ id: "run-legacy" })),
+      "utf-8",
+    );
+
+    server = await startUiServer({ openBrowser: false, port: 43281 });
+
+    const response = await fetch(new URL("/api/runs", server.url));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual([
+      expect.objectContaining({ id: "run-legacy" }),
+    ]);
   });
 });
 

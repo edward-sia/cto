@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build `cto ui`, a local browser-based saved-run explorer for `.codex-tree` run state.
+**Goal:** Build `cto ui`, a local browser-based saved-run explorer for `.cambrian-tree` run state.
 
 **Architecture:** Add a small Node HTTP server that serves JSON APIs and a dependency-free browser UI. Keep tree layout, run summaries, and inspector view-model logic in pure TypeScript modules so they are testable without a browser. Wire the server into Commander as `cto ui [run-id]`.
 
@@ -453,7 +453,7 @@ export function renderUiPage(options: RenderUiPageOptions): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Codex Tree Orchestrator</title>
+  <title>Cambrian Tree Orchestrator</title>
 </head>
 <body>
   <main id="app">Loading CTO UI...</main>
@@ -637,7 +637,7 @@ export function renderUiPage(options: RenderUiPageOptions): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Codex Tree Orchestrator</title>
+  <title>Cambrian Tree Orchestrator</title>
   <style>${css()}</style>
 </head>
 <body>
@@ -829,7 +829,7 @@ Expected health response:
 {"ok":true}
 ```
 
-Expected runs response: a JSON array. If `.codex-tree` has no runs, the response is `[]`.
+Expected runs response: a JSON array. If `.cambrian-tree` has no runs, the response is `[]`.
 
 - [ ] **Step 6: Browser smoke test**
 

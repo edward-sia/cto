@@ -3,7 +3,7 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["dist/**", "coverage/**", ".codex-tree/**", "node_modules/**", "node-*/**"],
+    ignores: ["dist/**", "coverage/**", ".cambrian-tree/**", ".codex-tree/**", "node_modules/**", "node-*/**"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

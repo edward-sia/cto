@@ -10,7 +10,7 @@ export function renderUiPage(options: RenderUiPageOptions = {}): string {
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Codex Tree Orchestrator</title>
+    <title>Cambrian Tree Orchestrator</title>
     <style>${css()}</style>
   </head>
   <body>
@@ -86,14 +86,14 @@ function css(): string {
     }
 
     .brand-mark {
-      width: 24px;
+      width: 34px;
       height: 24px;
       border-radius: 6px;
       background: #0f172a;
       color: #ffffff;
       display: grid;
       place-items: center;
-      font-size: 12px;
+      font-size: 11px;
       line-height: 1;
       flex: 0 0 auto;
     }
@@ -547,7 +547,7 @@ function clientScript(): string {
   app.innerHTML = [
     '<div class="app-shell">',
       '<header class="topbar">',
-        '<div class="brand"><span class="brand-mark">CT</span><span>Codex Tree Orchestrator</span></div>',
+        '<div class="brand"><span class="brand-mark">CTO</span><span>Cambrian Tree Orchestrator</span></div>',
         '<div class="topbar-meta"><span id="topbarStatus" class="status-pill">Loading saved runs</span><span id="topbarDetail"></span></div>',
       '</header>',
       '<main class="main">',

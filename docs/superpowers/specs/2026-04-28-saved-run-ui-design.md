@@ -5,7 +5,7 @@
 
 ## Overview
 
-Add a `cto ui` command that launches a local browser-based explorer for saved Codex Tree Orchestrator runs. The first version focuses on inspecting existing run state from `.codex-tree/<run-id>/state.json`, not on building a full live event monitor.
+Add a `cto ui` command that launches a local browser-based explorer for saved Cambrian Tree Orchestrator runs. The first version focuses on inspecting existing run state from `.cambrian-tree/<run-id>/state.json`, not on building a full live event monitor.
 
 The UI uses the approved Explorer Canvas direction:
 
@@ -41,7 +41,7 @@ Default behavior:
 
 - Serve the UI at `http://localhost:<port>`.
 - Choose an available port, starting from a sensible default.
-- Load saved runs from the same `.codex-tree` store used by existing commands.
+- Load saved runs from the same `.cambrian-tree` store used by existing commands.
 - Show a run picker if no run id is supplied.
 
 Optional deep link:
@@ -166,7 +166,7 @@ The layout algorithm can be simple for v1:
 ```mermaid
 flowchart LR
     CLI["cto ui"] --> Server["Local UI Server"]
-    Server --> Store[".codex-tree/*/state.json"]
+    Server --> Store[".cambrian-tree/*/state.json"]
     Browser["Browser UI"] --> Runs["GET /api/runs"]
     Browser --> Run["GET /api/runs/:runId"]
     Run --> Canvas["Tree Canvas"]
@@ -213,7 +213,7 @@ Manual verification:
 ## Acceptance Criteria
 
 - `cto ui` launches a local saved-run viewer.
-- The viewer lists saved runs from `.codex-tree`.
+- The viewer lists saved runs from `.cambrian-tree`.
 - Selecting a run renders its full tree.
 - Selecting a node updates the inspector.
 - The inspector exposes summary, debate, context, and leaf information.

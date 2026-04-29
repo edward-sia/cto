@@ -65,14 +65,20 @@ After each round of debate, you analyse the transcript and determine:
 - The alternatives must differ in a way that leads to meaningfully different implementations
   (e.g., REST vs GraphQL, monolith vs microservices, sync vs async processing)
 - The alternatives must be ON-TOPIC for the original intent. An off-topic alternative — however unique — is NOT a valid branch.
+- The alternatives must NOT be ones already settled by Locked Decisions in the context — re-litigating a parent's consensus is not a branch.
 - Style differences, library choices within the same pattern, and naming are NOT branches
-- Round 1: strongly prefer CONTINUE unless divergence is completely obvious and irreconcilable
 - When in doubt between DIVERGING and CONTINUE, choose CONTINUE
 
 ## Rules for CONSENSUS
 - Consensus does NOT require unanimity — it means no better alternative is worth a full separate branch
 - One agent raising a concern without proposing a concrete alternative = consensus with noted risks
-- When in doubt between CONSENSUS and CONTINUE, choose CONSENSUS
+- **Early consensus is preferred when there is nothing to debate** — if NO competing alternative is alive in the transcript (neither newly proposed this round nor carried over from prior rounds nor named in the intent itself) AND the agents are aligned on direction, return CONSENSUS immediately, even in round 1.
+- **CRITICAL — alternatives explicitly named in the intent count as live alternatives.** If the original intent itself says "decide between X and Y" or "compare A vs B," those are competing alternatives on the table from round 1. Do NOT treat them as already settled. They become a CONSENSUS only when the agents have actively chosen one and the others have been rejected with reasoning. They become DIVERGING when 2+ agents stake meaningfully different positions on which to pick.
+- When in doubt between CONSENSUS and CONTINUE, choose CONSENSUS — but only if no competing alternative is alive.
+
+## Rules for CONTINUE
+- CONTINUE is only justified when there is genuine unresolved disagreement that more discussion could resolve, OR when alternatives have been proposed but support is still forming.
+- Do NOT pick CONTINUE simply because "more rounds are available." Each extra round costs tokens; it must earn its keep.
 
 ## Calibration
 Over-branching wastes compute and fractures focus. Under-branching misses genuine trade-offs.
@@ -217,7 +223,7 @@ export class DebateEngine {
           type: "agent_spoke",
           agent: agentRole,
           round: roundNum,
-          message: parsed.message.slice(0, 200) + "...",
+          message: parsed.message,
         });
       }
 
@@ -274,9 +280,14 @@ export class DebateEngine {
     const alternativesSummary =
       alternatives.length > 0
         ? `\n\n## Alternatives Proposed This Round\n${alternatives.map((a) => `- [${a.label}] by ${a.proposedBy}: ${a.description}`).join("\n")}`
-        : "";
+        : "\n\n## Alternatives Proposed This Round\n(none surfaced this round — but check the transcript and the original intent for alternatives that are still live from prior rounds or named explicitly by the user)";
 
     const isLastRound = roundNumber >= this.maxRounds;
+
+    const lockedDecisions = context.architectureDecisions ?? [];
+    const lockedSection = lockedDecisions.length
+      ? `\n## Locked Decisions (already settled by ancestor consensus — re-raising these is NOT a branch)\n${lockedDecisions.map((d) => `- ${d}`).join("\n")}\n`
+      : "";
 
     const decomp = context.intentDecomposition;
     const decompositionFrame = decomp
@@ -291,13 +302,20 @@ export class DebateEngine {
 ## Context
 Original intent: ${context.originalIntent}
 ${context.branchDecision ? `Branch decision: ${context.branchDecision}` : ""}
-${decompositionFrame}
+${decompositionFrame}${lockedSection}
 ## Full Transcript
 ${transcript}
 ${alternativesSummary}
 
 ## Assessment Required
 This is round ${roundNumber} of ${this.maxRounds}. Assess the debate state.
+
+Decision procedure:
+1. List the alternatives currently alive — anything proposed this round, carried over from prior rounds, or explicitly named in the original intent (e.g. "decide between X and Y").
+2. If 2+ alternatives are alive AND 2+ agents stake meaningfully different positions on which to pick → DIVERGING.
+3. If alternatives are alive but agents have converged on one (the others have been actively rejected with reasoning) → CONSENSUS.
+4. If NO alternatives are alive AND agents are aligned → CONSENSUS now (do not request more rounds just because rounds remain).
+5. Otherwise → CONTINUE, but only if more discussion would actually change positions.
 ${isLastRound ? "\n⚠️ THIS IS THE FINAL ROUND. You MUST choose consensus or diverging. No continue." : ""}`;
 
     const rawResponse = this.dryRun

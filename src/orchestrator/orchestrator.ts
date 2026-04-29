@@ -357,6 +357,7 @@ export class TreeOrchestrator {
           architectureDecisions: [...new Set([
             ...(node.context.architectureDecisions ?? []),
             ...(transcript.contextUpdates.architectureDecisions ?? []),
+            `Chosen branch: ${alt.label} — ${alt.description}`,
           ])],
           branchDecision: `${alt.label}: ${alt.description}`,
           ancestorSummaries: [...node.context.ancestorSummaries, transcript.summary],

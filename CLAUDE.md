@@ -98,7 +98,7 @@ npx tsx src/cli/index.ts resume <run-id>  # Resume
 ### Phase 3: Agent quality ✅
 - [x] Structured `contextUpdates` from agents — `CONTEXT_UPDATE [field]: value` format parsed by `parseAgentResponse`, accumulated across rounds, merged into every child's `NodeContext`
 - [x] Agent memory — `AgentInput` now separates `priorRoundsHistory` (all previous rounds) from `currentRoundSoFar` (earlier speakers this round); prompt renders them distinctly so each agent sees who has already spoken in the current round
-- [x] Moderator branching sensitivity — tightened rules: requires 2+ agents to independently support alternatives, strongly prefers CONTINUE in round 1, explicit calibration guidance added
+- [x] Moderator branching sensitivity — tightened rules: requires 2+ agents to independently support alternatives, explicit calibration guidance added. The round-1 CONTINUE bias was removed in favour of an explicit decision procedure (see Phase 4) that lets the moderator end debate early when nothing is alive, while still branching when 2+ alternatives are.
 - [x] Agent system prompts — each agent now has a `Context Updates` section defining which fields it should emit, and a tightened `Critical Rule` raising the bar for proposing alternatives
 - [x] Persona boundaries — every specialty has explicit `Does` / `Does Not` guidance plus shared evidence rules forbidding invented facts, benchmarks, prices, volumes, compliance obligations, schemas, APIs, users, or business goals
 - [x] Specialist coverage — added UX Designer, Frontend Engineer, API / Integration Architect, Performance Engineer, and Technical Writer; optional specialists are selected by the analyzer only when grounded in the intent
@@ -110,6 +110,7 @@ npx tsx src/cli/index.ts resume <run-id>  # Resume
 - [x] Cost estimator — `src/utils/cost.ts` computes expected/worst-case node count and token spend before the run; CLI shows estimate and prompts to confirm (skip with `-y`).
 - [x] Codex Cloud best-of-N — `--cloud-env <id> --cloud-attempts <n>` routes leaf execution through `codex cloud exec`. Cloud results must be applied locally with `codex cloud apply <task-id>` after the task completes (see executor output).
 - [x] Codex token usage breakdown — `CodexExecutionResult.usage` captures input / cached / output / reasoning tokens per leaf; aggregated as `RunState.codexUsageTotal` and printed in the final summary.
+- [x] Early-consensus / branch-decision lock — moderator now follows an explicit decision procedure (list live alternatives → DIVERGING / CONSENSUS / CONTINUE). Round-1 consensus is fine when nothing is alive; alternatives named in the original intent count as live. When a node branches, the chosen alternative is injected into descendants' `architectureDecisions` as `Chosen branch: <label>`, picked up by the agent + moderator prompts' Locked Decisions sections so children stay within their parent's choice. Net effect on test prompts: convergent (~93% fewer debate tokens, same quality); divergent (~65% faster than the cross-pollinating version, cleaner per-branch leaves).
 
 ### Interactive plan gate ✅
 - [x] `--interactive-plan` pauses after debate traversal and before implementation or synthesis.

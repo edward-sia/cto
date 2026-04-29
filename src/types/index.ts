@@ -91,6 +91,7 @@ export interface Alternative {
   supportedBy: AgentRole[];
   rationale: string;
   confidence: number;
+  relevanceToIntent: number;
 }
 
 export interface DebateTranscript {
@@ -101,8 +102,19 @@ export interface DebateTranscript {
   contextUpdates: Partial<NodeContext>;
 }
 
+export interface IntentDecomposition {
+  loadBearingClaims: string[];
+  undefinedTerms: Array<{ term: string; needsResolution: string }>;
+  inScope: string[];
+  outOfScope: string[];
+  knownUnknowns: string[];
+  feasibilityFlags: string[];
+  rationale: string;
+}
+
 export interface NodeContext {
   originalIntent: string;
+  intentDecomposition?: IntentDecomposition;
   prd?: string;
   acceptanceCriteria?: string[];
   architectureDecisions?: string[];

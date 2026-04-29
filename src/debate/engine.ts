@@ -196,6 +196,7 @@ export class DebateEngine {
               supportedBy: [agentRole],
               rationale: alt.rationale,
               confidence: 0.5,
+              relevanceToIntent: 0.5,
             });
           }
         }

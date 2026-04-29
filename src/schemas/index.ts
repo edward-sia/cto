@@ -8,6 +8,24 @@ export const AlternativeSchema = z.object({
   supportedBy: z.array(z.string()).default([]),
   rationale: z.string(),
   confidence: z.number().min(0).max(1).default(0.5),
+  relevanceToIntent: z.number().min(0).max(1).default(0.5),
+});
+
+export const IntentDecompositionSchema = z.object({
+  loadBearingClaims: z.array(z.string()).default([]),
+  undefinedTerms: z
+    .array(
+      z.object({
+        term: z.string(),
+        needsResolution: z.string(),
+      })
+    )
+    .default([]),
+  inScope: z.array(z.string()).default([]),
+  outOfScope: z.array(z.string()).default([]),
+  knownUnknowns: z.array(z.string()).default([]),
+  feasibilityFlags: z.array(z.string()).default([]),
+  rationale: z.string().default(""),
 });
 
 export const ModeratorAssessmentSchema = z.object({

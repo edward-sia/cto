@@ -23,6 +23,8 @@ import type { RunState, TreeNode, RunConfig } from "../types/index.js";
 import { AGENT_DISPLAY_NAMES } from "../types/index.js";
 import { startUiServer } from "../ui/server.js";
 import { estimateRunCost, formatCostEstimate, priceCodexUsage, priceLLMUsage } from "../utils/cost.js";
+import { loadGroundTruth } from "../ground-truth/provider.js";
+import type { DomainFacts } from "../ground-truth/types.js";
 
 const program = new Command();
 
@@ -48,6 +50,7 @@ program
   .option("--cloud-env <id>", "Use Codex Cloud with this environment id instead of local SDK")
   .option("--cloud-attempts <n>", "Best-of-N attempts when using --cloud-env", "1")
   .option("--dry-run", "Skip all LLM and Codex calls — exercise tree shape only", false)
+  .option("--ground-truth <spec>", "Inject verified domain facts (e.g. file:./facts.json, sample:./data.csv, openapi:./spec.yaml)")
   .option("-y, --yes", "Skip pre-run cost confirmation", false)
   .action(async (intent: string, opts) => {
     const dryRun = Boolean(opts.dryRun);
@@ -70,6 +73,28 @@ program
     };
 
     const fullConfig: RunConfig = { ...DEFAULT_RUN_CONFIG, ...config };
+
+    let domainFacts: DomainFacts | undefined;
+    if (opts.groundTruth) {
+      try {
+        const gtSpinner = ora("Loading ground truth...").start();
+        domainFacts = await loadGroundTruth(opts.groundTruth, openai, fullConfig.reasoningModel);
+        gtSpinner.succeed(chalk.green(`Ground truth loaded: ${domainFacts.domain}`));
+        if (domainFacts.knownAbsences.length) {
+          console.log(chalk.dim(`  Known absences: ${domainFacts.knownAbsences.length} item(s)`));
+        }
+        if (domainFacts.schemas?.length) {
+          console.log(chalk.dim(`  Schemas: ${domainFacts.schemas.map((s) => s.name).join(", ")}`));
+        }
+        if (domainFacts.apiEndpoints?.length) {
+          console.log(chalk.dim(`  API endpoints: ${domainFacts.apiEndpoints.length} route(s)`));
+        }
+      } catch (err) {
+        console.error(chalk.red(`Failed to load ground truth: ${err instanceof Error ? err.message : String(err)}`));
+        process.exit(1);
+      }
+    }
+
     if (!dryRun) {
       const estimate = estimateRunCost(fullConfig);
       console.log(chalk.bold.white("\n🌳 Cambrian Tree Orchestrator — Pre-run Estimate"));
@@ -158,7 +183,7 @@ program
     spinner.start("Initialising...");
 
     try {
-      await orchestrator.run(intent);
+      await orchestrator.run(intent, domainFacts);
     } catch (error) {
       spinner.fail(chalk.red("Run failed"));
       console.error(error);

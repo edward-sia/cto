@@ -18,6 +18,7 @@ import type {
   CodexUsage,
   LLMUsage,
   TaskAnalysis,
+  DomainFacts,
 } from "../types/index.js";
 import { addUsage, emptyUsage } from "../utils/usage.js";
 import { AGENT_DEFINITIONS } from "../agents/definitions.js";
@@ -116,7 +117,7 @@ export class TreeOrchestrator {
     this.callbacks = callbacks;
   }
 
-  async run(intent: string): Promise<RunState> {
+  async run(intent: string, domainFacts?: DomainFacts): Promise<RunState> {
     const runId = `run-${nanoid(10)}`;
     const analysis = await this.analyzer.analyze(intent);
     this.callbacks.onAnalysisComplete?.(analysis);
@@ -126,6 +127,7 @@ export class TreeOrchestrator {
     const root = this.createNode(null, 0, {
       originalIntent: intent,
       intentDecomposition: decomposition,
+      domainFacts,
       ancestorSummaries: [],
     });
 

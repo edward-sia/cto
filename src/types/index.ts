@@ -162,6 +162,7 @@ export interface JudgeScore {
   architecturalQuality: number;
   testCoverage: number;
   intentAlignment: number;
+  realWorldFit: number;
   simplicity: number;
   composite: number;
   rationale: string;

@@ -39,6 +39,7 @@ export const JudgeScoreSchema = z.object({
   architecturalQuality: z.number().min(0).max(10),
   testCoverage: z.number().min(0).max(10),
   intentAlignment: z.number().min(0).max(10),
+  realWorldFit: z.number().min(0).max(10),
   simplicity: z.number().min(0).max(10),
   composite: z.number(),
   rationale: z.string(),

@@ -346,7 +346,7 @@ function printResults(state: RunState): void {
       const r = state.rankedResults[i];
       const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`;
       console.log(`${medal} ${chalk.bold(r.score.composite.toFixed(1))}/10 — Path: ${chalk.cyan(r.path.join(" → ") || "(root)")}`);
-      console.log(chalk.dim(`   FC:${r.score.functionalCompleteness} AQ:${r.score.architecturalQuality} TC:${r.score.testCoverage} IA:${r.score.intentAlignment} S:${r.score.simplicity}`));
+      console.log(chalk.dim(`   FC:${r.score.functionalCompleteness} AQ:${r.score.architecturalQuality} TC:${r.score.testCoverage} IA:${r.score.intentAlignment} RWF:${r.score.realWorldFit} S:${r.score.simplicity}`));
       console.log(chalk.dim(`   ${r.score.rationale}`));
       console.log();
     }

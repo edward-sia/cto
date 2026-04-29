@@ -1,9 +1,10 @@
 import OpenAI from "openai";
 import { AGENT_DEFINITIONS } from "../agents/definitions.js";
 import { TaskAnalysisSchema } from "../schemas/index.js";
-import type { AgentRole, TaskAnalysis } from "../types/index.js";
+import type { AgentRole, LLMUsage, TaskAnalysis } from "../types/index.js";
 import { AGENT_ROLES } from "../types/index.js";
 import { withRetry } from "../utils/retry.js";
+import { addUsageFromResponse, emptyUsage } from "../utils/usage.js";
 
 const DEFAULT_ANALYSIS: TaskAnalysis = {
   runMode: "implementation",
@@ -17,11 +18,16 @@ export class TaskAnalyzer {
   private openai: OpenAI;
   private model: string;
   private dryRun: boolean;
+  private usage: LLMUsage = emptyUsage();
 
   constructor(openai: OpenAI, model: string, dryRun = false) {
     this.openai = openai;
     this.model = model;
     this.dryRun = dryRun;
+  }
+
+  get llmUsage(): LLMUsage {
+    return { ...this.usage };
   }
 
   async analyze(intent: string): Promise<TaskAnalysis> {
@@ -67,6 +73,7 @@ Respond with ONLY valid JSON - no markdown, no explanation:
           max_tokens: 512,
         })
       );
+      addUsageFromResponse(this.usage, response);
       const content = response.choices[0]?.message?.content ?? "";
       const jsonStr = content.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
       const raw = TaskAnalysisSchema.parse(JSON.parse(jsonStr));

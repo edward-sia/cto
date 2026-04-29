@@ -25,6 +25,8 @@ import {
 } from "../agents/definitions.js";
 import { ModeratorAssessmentSchema } from "../schemas/index.js";
 import { withRetry } from "../utils/retry.js";
+import { addUsageFromResponse, emptyUsage } from "../utils/usage.js";
+import type { LLMUsage } from "../types/index.js";
 
 function mergeContextUpdates(
   target: Partial<NodeContext>,
@@ -139,6 +141,7 @@ export class DebateEngine {
   private dryRun: boolean;
   private onProgress?: (event: DebateProgressEvent) => void;
   private totalTokens = 0;
+  private usage: LLMUsage = emptyUsage();
 
   constructor(config: DebateEngineConfig) {
     this.openai = config.openai;
@@ -238,12 +241,12 @@ export class DebateEngine {
 
       if (assessment.outcome === "consensus") {
         this.onProgress?.({ type: "debate_complete", outcome: "consensus" });
-        return { rounds, finalOutcome: "consensus", summary: assessment.summary, tokenUsage: this.totalTokens, contextUpdates: accumulatedContextUpdates };
+        return { rounds, finalOutcome: "consensus", summary: assessment.summary, tokenUsage: this.totalTokens, llmUsage: this.llmUsage, contextUpdates: accumulatedContextUpdates };
       }
 
       if (assessment.outcome === "diverging") {
         this.onProgress?.({ type: "debate_complete", outcome: "branched" });
-        return { rounds, finalOutcome: "branched", summary: assessment.summary, tokenUsage: this.totalTokens, contextUpdates: accumulatedContextUpdates };
+        return { rounds, finalOutcome: "branched", summary: assessment.summary, tokenUsage: this.totalTokens, llmUsage: this.llmUsage, contextUpdates: accumulatedContextUpdates };
       }
     }
 
@@ -253,6 +256,7 @@ export class DebateEngine {
       finalOutcome: "consensus",
       summary: "Max debate rounds reached. Proceeding with best available direction.",
       tokenUsage: this.totalTokens,
+      llmUsage: this.llmUsage,
       contextUpdates: accumulatedContextUpdates,
     };
   }
@@ -332,11 +336,16 @@ ${isLastRound ? "\n⚠️ THIS IS THE FINAL ROUND. You MUST choose consensus or 
       })
     );
     this.totalTokens += response.usage?.total_tokens ?? 0;
+    addUsageFromResponse(this.usage, response);
     return response.choices[0]?.message?.content ?? "";
   }
 
   get tokensUsed(): number {
     return this.totalTokens;
+  }
+
+  get llmUsage(): LLMUsage {
+    return { ...this.usage };
   }
 
   private mockAgentResponse(

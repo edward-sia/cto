@@ -4,9 +4,10 @@
  */
 
 import OpenAI from "openai";
-import type { TreeNode, JudgeScore } from "../types/index.js";
+import type { TreeNode, JudgeScore, LLMUsage } from "../types/index.js";
 import { JudgeScoreSchema } from "../schemas/index.js";
 import { withRetry } from "../utils/retry.js";
+import { addUsageFromResponse, emptyUsage } from "../utils/usage.js";
 
 const JUDGE_SYSTEM_PROMPT = `You are an expert software engineering judge. You evaluate code solutions against their original requirements.
 
@@ -58,11 +59,16 @@ export class Judge {
   private openai: OpenAI;
   private model: string;
   private dryRun: boolean;
+  private usage: LLMUsage = emptyUsage();
 
   constructor(openai: OpenAI, model: string, dryRun = false) {
     this.openai = openai;
     this.model = model;
     this.dryRun = dryRun;
+  }
+
+  get llmUsage(): LLMUsage {
+    return { ...this.usage };
   }
 
   async score(node: TreeNode): Promise<JudgeScore> {
@@ -110,6 +116,7 @@ Score this solution against the rubrics.`;
           max_tokens: 1024,
         })
       );
+      addUsageFromResponse(this.usage, response);
 
       const raw = response.choices[0]?.message?.content ?? "";
       const jsonStr = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();

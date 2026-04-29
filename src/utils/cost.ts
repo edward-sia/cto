@@ -3,7 +3,7 @@
  * before a 100k-token run, not to be billing-accurate.
  */
 
-import type { RunConfig, TreePhase } from "../types/index.js";
+import type { CodexUsage, LLMUsage, RunConfig, TreePhase } from "../types/index.js";
 
 interface ModelPrice {
   inputPerMTok: number;
@@ -135,6 +135,45 @@ export function estimateRunCost(config: RunConfig): CostEstimate {
     modelPrice: reasoning.price,
     pricedModelKnown: reasoning.known && judge.known,
   };
+}
+
+/**
+ * Compute USD cost for an LLMUsage record at a given model's published rates.
+ * `inputTokens` from the OpenAI API includes cached tokens; we charge cached
+ * tokens at 50% (OpenAI's published prompt-cache discount for gpt-4o family).
+ * Pass priceModelKnown=false to communicate uncertainty to the caller.
+ */
+export function priceLLMUsage(
+  usage: LLMUsage,
+  model: string
+): { usd: number; priced: ModelPrice; modelKnown: boolean } {
+  const { price, known } = getPrice(model);
+  const uncachedInput = Math.max(0, usage.inputTokens - usage.cachedInputTokens);
+  const usd =
+    (uncachedInput * price.inputPerMTok +
+      usage.cachedInputTokens * price.inputPerMTok * 0.5 +
+      usage.outputTokens * price.outputPerMTok) /
+    1_000_000;
+  return { usd, priced: price, modelKnown: known };
+}
+
+/**
+ * Best-effort Codex cost. The Codex SDK doesn't tell us which model was used,
+ * so we apply gpt-4o pricing as a rough upper-bound proxy. If the Codex client
+ * is authenticated via a ChatGPT subscription rather than an API key, the
+ * marginal cost is $0 — return both numbers and let the caller decide.
+ */
+export function priceCodexUsage(
+  usage: CodexUsage
+): { usdProxy: number; priced: ModelPrice } {
+  const price = MODEL_PRICES["gpt-4o"];
+  const uncachedInput = Math.max(0, usage.inputTokens - usage.cachedInputTokens);
+  const usdProxy =
+    (uncachedInput * price.inputPerMTok +
+      usage.cachedInputTokens * price.inputPerMTok * 0.5 +
+      (usage.outputTokens + usage.reasoningOutputTokens) * price.outputPerMTok) /
+    1_000_000;
+  return { usdProxy, priced: price };
 }
 
 export function formatCostEstimate(estimate: CostEstimate, config: RunConfig): string {

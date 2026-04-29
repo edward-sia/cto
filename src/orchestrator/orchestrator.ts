@@ -16,8 +16,10 @@ import type {
   Alternative,
   JudgeScore,
   CodexUsage,
+  LLMUsage,
   TaskAnalysis,
 } from "../types/index.js";
+import { addUsage, emptyUsage } from "../utils/usage.js";
 import { AGENT_DEFINITIONS } from "../agents/definitions.js";
 import { TaskAnalyzer } from "../analyzer/task-analyzer.js";
 import { IntentDecomposer } from "../analyzer/intent-decomposer.js";
@@ -135,10 +137,13 @@ export class TreeOrchestrator {
       leafNodeIds: [],
       startedAt: new Date().toISOString(),
       totalTokensUsed: 0,
+      llmUsage: emptyUsage(),
       status: "running",
       runMode: analysis.runMode,
       selectedAgents: analysis.selectedAgents,
     };
+    this.accumulateLLMUsage(this.analyzer.llmUsage);
+    this.accumulateLLMUsage(this.decomposer.llmUsage);
 
     await this.store.save(this.runState);
 
@@ -160,9 +165,11 @@ export class TreeOrchestrator {
       if (this.runState.runMode === "implementation") {
         await this.executeLeaves(root);
         await this.judgeLeaves(root);
+        this.accumulateLLMUsage(this.judge.llmUsage);
         this.runState.rankedResults = this.rankResults(root);
       } else {
         await this.synthesizeLeaves(root);
+        this.accumulateLLMUsage(this.synthesizer.llmUsage);
       }
       this.runState.status = "completed";
       this.runState.completedAt = new Date().toISOString();
@@ -219,6 +226,7 @@ export class TreeOrchestrator {
     const transcript = await debateEngine.runDebate(phase, node.context, agents);
     node.debate = transcript;
     this.runState.totalTokensUsed += transcript.tokenUsage;
+    this.accumulateLLMUsage(transcript.llmUsage);
 
     const budget = this.config.tokenBudget;
     if (budget && this.runState.totalTokensUsed > budget) {
@@ -376,6 +384,11 @@ export class TreeOrchestrator {
       await this.store.save(this.runState);
     });
     await runWithConcurrency(tasks, this.config.leafConcurrency);
+  }
+
+  private accumulateLLMUsage(usage: LLMUsage): void {
+    if (!this.runState.llmUsage) this.runState.llmUsage = emptyUsage();
+    addUsage(this.runState.llmUsage, usage);
   }
 
   private addToCodexTotal(usage: CodexUsage): void {

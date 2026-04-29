@@ -99,6 +99,7 @@ export interface DebateTranscript {
   finalOutcome: "consensus" | "branched";
   summary: string;
   tokenUsage: number;
+  llmUsage: LLMUsage;
   contextUpdates: Partial<NodeContext>;
 }
 
@@ -122,6 +123,12 @@ export interface NodeContext {
   implementationSpec?: string;
   testStrategy?: string;
   ancestorSummaries: string[];
+}
+
+export interface LLMUsage {
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
 }
 
 export interface CodexUsage {
@@ -203,6 +210,7 @@ export interface RunState {
   startedAt: string;
   completedAt?: string;
   totalTokensUsed: number;
+  llmUsage?: LLMUsage;
   codexUsageTotal?: CodexUsage;
   status: "running" | "completed" | "failed" | "paused";
   runMode?: "implementation" | "exploration";

@@ -1,6 +1,7 @@
 import OpenAI from "openai";
-import type { CodexExecutionResult, TreeNode } from "../types/index.js";
+import type { CodexExecutionResult, LLMUsage, TreeNode } from "../types/index.js";
 import { withRetry } from "../utils/retry.js";
+import { addUsageFromResponse, emptyUsage } from "../utils/usage.js";
 
 const SYSTEM_PROMPT = `You are a research synthesizer. Given a debate transcript and accumulated context from an exploration task, produce a structured document.
 
@@ -22,11 +23,16 @@ export class Synthesizer {
   private openai: OpenAI;
   private model: string;
   private dryRun: boolean;
+  private usage: LLMUsage = emptyUsage();
 
   constructor(openai: OpenAI, model: string, dryRun = false) {
     this.openai = openai;
     this.model = model;
     this.dryRun = dryRun;
+  }
+
+  get llmUsage(): LLMUsage {
+    return { ...this.usage };
   }
 
   async synthesize(node: TreeNode): Promise<CodexExecutionResult> {
@@ -77,6 +83,7 @@ export class Synthesizer {
           max_tokens: 2048,
         })
       );
+      addUsageFromResponse(this.usage, response);
 
       return {
         threadId: `synthesis-${node.id}`,

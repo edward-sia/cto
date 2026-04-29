@@ -1,7 +1,8 @@
 import OpenAI from "openai";
 import { IntentDecompositionSchema } from "../schemas/index.js";
-import type { IntentDecomposition } from "../types/index.js";
+import type { IntentDecomposition, LLMUsage } from "../types/index.js";
 import { withRetry } from "../utils/retry.js";
+import { addUsageFromResponse, emptyUsage } from "../utils/usage.js";
 
 const EMPTY_DECOMPOSITION: IntentDecomposition = {
   loadBearingClaims: [],
@@ -42,11 +43,16 @@ export class IntentDecomposer {
   private openai: OpenAI;
   private model: string;
   private dryRun: boolean;
+  private usage: LLMUsage = emptyUsage();
 
   constructor(openai: OpenAI, model: string, dryRun = false) {
     this.openai = openai;
     this.model = model;
     this.dryRun = dryRun;
+  }
+
+  get llmUsage(): LLMUsage {
+    return { ...this.usage };
   }
 
   async decompose(intent: string): Promise<IntentDecomposition> {
@@ -64,6 +70,7 @@ export class IntentDecomposer {
           max_tokens: 1024,
         })
       );
+      addUsageFromResponse(this.usage, response);
       const content = response.choices[0]?.message?.content ?? "";
       const jsonStr = content.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
       return IntentDecompositionSchema.parse(JSON.parse(jsonStr));

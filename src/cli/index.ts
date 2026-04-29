@@ -22,7 +22,7 @@ import { FileStore } from "../persistence/file-store.js";
 import type { RunState, TreeNode, RunConfig } from "../types/index.js";
 import { AGENT_DISPLAY_NAMES } from "../types/index.js";
 import { startUiServer } from "../ui/server.js";
-import { estimateRunCost, formatCostEstimate } from "../utils/cost.js";
+import { estimateRunCost, formatCostEstimate, priceCodexUsage, priceLLMUsage } from "../utils/cost.js";
 
 const program = new Command();
 
@@ -310,10 +310,20 @@ function printResults(state: RunState): void {
   console.log(`${chalk.bold("Mode:")}       ${state.runMode ?? "implementation"}`);
   console.log(`${chalk.bold("Leaves:")}     ${state.leafNodeIds.length}`);
   console.log(`${chalk.bold("Tokens:")}     ${state.totalTokensUsed.toLocaleString()} (debate + judge)`);
+  if (state.llmUsage) {
+    const u = state.llmUsage;
+    const uncached = Math.max(0, u.inputTokens - u.cachedInputTokens);
+    const { usd, modelKnown } = priceLLMUsage(u, state.config.reasoningModel);
+    const note = modelKnown ? "" : " *price unknown — used gpt-4o rates";
+    console.log(
+      `${chalk.bold("LLM:")}        input=${u.inputTokens.toLocaleString()} (uncached ${uncached.toLocaleString()}, cached ${u.cachedInputTokens.toLocaleString()}), output=${u.outputTokens.toLocaleString()} — ~$${usd.toFixed(4)}${note}`
+    );
+  }
   if (state.codexUsageTotal) {
     const u = state.codexUsageTotal;
+    const { usdProxy } = priceCodexUsage(u);
     console.log(
-      `${chalk.bold("Codex:")}      input=${u.inputTokens.toLocaleString()} (cached ${u.cachedInputTokens.toLocaleString()}), output=${u.outputTokens.toLocaleString()}, reasoning=${u.reasoningOutputTokens.toLocaleString()}`
+      `${chalk.bold("Codex:")}      input=${u.inputTokens.toLocaleString()} (cached ${u.cachedInputTokens.toLocaleString()}), output=${u.outputTokens.toLocaleString()}, reasoning=${u.reasoningOutputTokens.toLocaleString()} — ~$${usdProxy.toFixed(4)} on API-key auth (otherwise covered by ChatGPT plan)`
     );
   }
   console.log(`${chalk.bold("Duration:")}   ${state.completedAt ? timeDiff(state.startedAt, state.completedAt) : "in progress"}`);

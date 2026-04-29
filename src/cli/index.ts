@@ -44,7 +44,7 @@ program
   .option("-w, --workdir <path>", "Working directory for Codex", process.cwd())
   .option("--token-budget <n>", "Warn when total tokens exceed this limit")
   .option("--leaf-concurrency <n>", "Max parallel leaf Codex executions", String(DEFAULT_RUN_CONFIG.leafConcurrency))
-  .option("--prune-threshold <n>", "Drop alternatives whose moderator confidence is below this (0-1)", "0")
+  .option("--prune-threshold <n>", "Drop alternatives whose confidence × relevance-to-intent is below this (0-1)", String(DEFAULT_RUN_CONFIG.pruneThreshold))
   .option("--cloud-env <id>", "Use Codex Cloud with this environment id instead of local SDK")
   .option("--cloud-attempts <n>", "Best-of-N attempts when using --cloud-env", "1")
   .option("--dry-run", "Skip all LLM and Codex calls — exercise tree shape only", false)

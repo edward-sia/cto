@@ -1,8 +1,10 @@
 # Interactive Plan Gate Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** This implementation plan has been completed. It originally required superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement task-by-task; completed steps are marked with checkbox (`- [x]`) syntax.
 
 **Goal:** Add opt-in CLI/orchestrator support for a one-shot human review gate before leaf implementation.
+
+**Status:** Implemented
 
 **Architecture:** The orchestrator owns the gate so `run()` and `resume()` share behavior, while the CLI supplies terminal prompts via callbacks. Human decisions are persisted on `TreeNode`; revision prompts flow through `NodeContext` into agent, synthesis, and execution prompts.
 
@@ -28,7 +30,7 @@
 - Modify: `src/types/index.ts`
 - Modify: `tests/orchestrator/orchestrator.test.ts`
 
-- [ ] **Step 1: Write failing orchestrator tests**
+- [x] **Step 1: Write failing orchestrator tests**
 
 Add tests that construct `TreeOrchestrator` with `dryRun: true`, shallow `maxDepth`, and `interactivePlan: true`. Use `onHumanPlanReview` callbacks returning `{ action: "proceed" }`, `{ action: "kill" }`, or `{ action: "revise", prompt: "Prefer local-first storage." }`.
 
@@ -46,13 +48,13 @@ expect(state.status).toBe("paused");
 expect(state.rankedResults).toBeUndefined();
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `npm test -- tests/orchestrator/orchestrator.test.ts`
 
 Expected: FAIL because `interactivePlan`, `HumanPlanDecision`, and `humanIntervention` do not exist yet.
 
-- [ ] **Step 3: Add type definitions**
+- [x] **Step 3: Add type definitions**
 
 Add:
 
@@ -77,7 +79,7 @@ humanIntervention?: HumanIntervention;
 interactivePlan: boolean;
 ```
 
-- [ ] **Step 4: Run tests to verify remaining failures**
+- [x] **Step 4: Run tests to verify remaining failures**
 
 Run: `npm test -- tests/orchestrator/orchestrator.test.ts`
 
@@ -91,7 +93,7 @@ Expected: FAIL because orchestrator behavior is not implemented yet.
 - Modify: `src/orchestrator/orchestrator.ts`
 - Modify: `tests/orchestrator/orchestrator.test.ts`
 
-- [ ] **Step 1: Implement minimal orchestrator callbacks and default config**
+- [x] **Step 1: Implement minimal orchestrator callbacks and default config**
 
 Add `interactivePlan: false` to `DEFAULT_RUN_CONFIG` and callback types:
 
@@ -100,7 +102,7 @@ onHumanPlanReview?: (node: TreeNode, state: RunState) => Promise<HumanPlanDecisi
 onHumanPlanApplied?: (nodeId: string, decision: HumanPlanDecision) => void;
 ```
 
-- [ ] **Step 2: Share post-tree completion**
+- [x] **Step 2: Share post-tree completion**
 
 Extract completion after `processNode()` into a private method:
 
@@ -110,7 +112,7 @@ private async completeAfterTree(root: TreeNode): Promise<void>
 
 It should collect leaves, run the gate when enabled, recollect leaves, skip execution if none remain, then execute/synthesize and rank as current code does.
 
-- [ ] **Step 3: Apply human decisions**
+- [x] **Step 3: Apply human decisions**
 
 Implement:
 
@@ -128,11 +130,11 @@ Rules:
 - Nodes under a human revision are not prompted again.
 - Missing callback throws a clear error.
 
-- [ ] **Step 4: Fix leaf collection for pruned nodes**
+- [x] **Step 4: Fix leaf collection for pruned nodes**
 
 Update `collectLeafIds()` and `collectLeaves()` to exclude `status === "pruned"` before returning leaf nodes.
 
-- [ ] **Step 5: Run orchestrator tests**
+- [x] **Step 5: Run orchestrator tests**
 
 Run: `npm test -- tests/orchestrator/orchestrator.test.ts`
 
@@ -148,7 +150,7 @@ Expected: PASS.
 - Modify: `src/synthesis/synthesizer.ts`
 - Modify: existing tests where practical.
 
-- [ ] **Step 1: Write prompt tests**
+- [x] **Step 1: Write prompt tests**
 
 Add or update tests to assert prompts include:
 
@@ -159,7 +161,7 @@ Prefer local-first storage.
 
 Use existing prompt-building tests where available; otherwise use dry-run execution/synthesis output that echoes prompt slices.
 
-- [ ] **Step 2: Verify prompt tests fail**
+- [x] **Step 2: Verify prompt tests fail**
 
 Run focused tests:
 
@@ -169,11 +171,11 @@ npm test -- tests/synthesis/synthesizer.test.ts tests/orchestrator/orchestrator.
 
 Expected: FAIL because prompt rendering does not include the new field.
 
-- [ ] **Step 3: Add prompt sections**
+- [x] **Step 3: Add prompt sections**
 
 Render `context.humanRevisionPrompt` in agent, Codex implementation, and synthesis prompts with the heading `Human Revision`.
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Run:
 
@@ -191,21 +193,21 @@ Expected: PASS.
 - Modify: `src/cli/index.ts`
 - Test manually with dry-run.
 
-- [ ] **Step 1: Add CLI flags**
+- [x] **Step 1: Add CLI flags**
 
 Add `.option("--interactive-plan", "Review candidate leaves before implementation", false)` to `run` and `resume`.
 
-- [ ] **Step 2: Pass config and callback**
+- [x] **Step 2: Pass config and callback**
 
 Pass `interactivePlan: Boolean(opts.interactivePlan)` into `run`; on resume, pass the flag only when provided and otherwise let persisted config win.
 
 Add a `reviewHumanPlan()` helper using `readline/promises` that returns `HumanPlanDecision`.
 
-- [ ] **Step 3: Add final-leaf warning**
+- [x] **Step 3: Add final-leaf warning**
 
 When there is one executable leaf left and the user chooses kill, ask confirmation before returning `{ action: "kill" }`.
 
-- [ ] **Step 4: Typecheck**
+- [x] **Step 4: Typecheck**
 
 Run: `npm run typecheck`
 
@@ -218,19 +220,19 @@ Expected: PASS.
 **Files:**
 - All modified source and tests.
 
-- [ ] **Step 1: Run full tests**
+- [x] **Step 1: Run full tests**
 
 Run: `npm test`
 
 Expected: all tests pass.
 
-- [ ] **Step 2: Run typecheck**
+- [x] **Step 2: Run typecheck**
 
 Run: `npm run typecheck`
 
 Expected: pass.
 
-- [ ] **Step 3: Dry-run manual smoke**
+- [x] **Step 3: Dry-run manual smoke**
 
 Run:
 
@@ -240,7 +242,7 @@ npx tsx src/cli/index.ts run "Build a hello world CLI" --dry-run --interactive-p
 
 Choose at least one proceed or revise path. Expected: run completes or pauses cleanly if all leaves are killed.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 Run:
 

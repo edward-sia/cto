@@ -47,9 +47,14 @@ flowchart TD
     G --> I{At max depth?}
     H --> I
     I -- no --> C
-    I -- yes --> J[Leaf node]
-    J --> K[Codex execution\nvia SDK or CLI]
-    K --> L[LLM Judge scores\n5 dimensions]
+    I -- yes --> J[Candidate leaf node]
+    J --> Gate{--interactive-plan?}
+    Gate -- no --> K[Codex execution\nvia SDK or CLI]
+    Gate -- proceed --> K
+    Gate -- kill --> P[Pruned branch\nexcluded from execution]
+    Gate -- revise once --> R[human-revision child\nwith human prompt]
+    R --> C
+    K --> L[LLM Judge scores\n6 dimensions]
     L --> M([Ranked results])
     M --> N[Saved run UI\ncto ui]
 ```
@@ -89,6 +94,10 @@ stateDiagram-v2
     branched --> debating : child nodes
     consensus --> debating : child node
     debating --> completed : max depth reached
+    completed --> pruned : interactive kill
+    consensus --> pruned : interactive kill
+    completed --> pending : interactive revise child
+    consensus --> pending : interactive revise child
     consensus --> executing : isLeaf()
     executing --> completed : Codex returns
     completed --> scored : judge.score()
@@ -138,8 +147,22 @@ CONTEXT_UPDATE [implementation-spec]: Use Prisma ORM with connection pooling via
 CONTEXT_UPDATE [test-strategy]: Unit tests for handlers, integration tests against real Postgres via testcontainers
 ```
 
-Supported fields: `prd`, `acceptance-criteria`, `architecture-decision`, `implementation-spec`, `test-strategy`.
+Supported agent-emitted fields: `prd`, `acceptance-criteria`, `architecture-decision`, `implementation-spec`, `test-strategy`.
 Array fields (`acceptance-criteria`, `architecture-decision`) are deduplicated and appended; scalar fields take the last written value.
+
+Human plan revisions use a separate context field, `humanRevisionPrompt`. It is written by the interactive gate, not by agents, and is rendered into later agent, synthesis, and implementation prompts under a `Human Revision` heading.
+
+## Interactive Plan Gate
+
+`--interactive-plan` adds a human checkpoint after debate traversal produces candidate leaves and before execution or synthesis begins. It is intentionally terminal-first and does not require saved-run UI changes.
+
+For each original candidate leaf, the human can choose:
+
+- `proceed` — persist `TreeNode.humanIntervention.action = "proceed"` and execute the leaf normally.
+- `revise` — persist the revision prompt, create a `human-revision` child with `NodeContext.humanRevisionPrompt`, and run normal CTO debate for that child.
+- `kill` — persist `TreeNode.humanIntervention.action = "kill"`, mark the node `pruned`, and exclude it from execution, synthesis, scoring, and ranking.
+
+The gate is one-shot in v1: descendants of a human revision are eligible for execution but are not prompted again. If every candidate leaf is killed, the run is saved as `paused` with no execution attempted. `cto resume` preserves completed human decisions and only prompts leaves that still need review.
 
 ## Tree Structure Example
 
@@ -190,10 +213,11 @@ graph LR
 
 ```mermaid
 pie title Judge Score Weights
-    "Functional Completeness" : 30
-    "Architectural Quality" : 20
-    "Test Coverage" : 20
+    "Functional Completeness" : 25
+    "Architectural Quality" : 15
+    "Test Coverage" : 15
     "Intent Alignment" : 20
+    "Real-World Fit" : 15
     "Simplicity" : 10
 ```
 
@@ -202,12 +226,12 @@ pie title Judge Score Weights
 ```
 src/
 ├── cli/index.ts              # CLI entry (commander) — run, list, show, tree, ui, resume
-├── types/index.ts            # All shared types (TreeNode, RunConfig, JudgeScore, …)
+├── types/index.ts            # All shared types (TreeNode, RunConfig, HumanIntervention, JudgeScore, …)
 ├── schemas/index.ts          # Zod schemas for LLM response validation
 ├── utils/retry.ts            # Exponential-backoff retry wrapper
 ├── agents/definitions.ts     # Agent system prompts + buildAgentPrompt + parseAgentResponse
 ├── debate/engine.ts          # DebateEngine — round-table loop + moderator assessment
-├── orchestrator/orchestrator.ts  # TreeOrchestrator — main loop, SIGINT, token budget
+├── orchestrator/orchestrator.ts  # TreeOrchestrator — main loop, interactive gate, SIGINT, token budget
 ├── execution/codex-client.ts # CodexExecutor — SDK + CLI fallback
 ├── judge/judge.ts            # Judge — LLM scoring
 ├── persistence/file-store.ts # FileStore — .cambrian-tree/<run-id>/state.json
@@ -240,3 +264,5 @@ Pressing **Ctrl+C** during a run triggers a `SIGINT` handler that:
 4. Exits with code 130
 
 The handler is removed after a normal run completes.
+
+Interactive plan gate state is persisted the same way. Already-reviewed leaves keep their `humanIntervention`, revised branches remain normal child nodes, and killed leaves remain `pruned` on resume.

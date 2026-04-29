@@ -1,6 +1,6 @@
 # Cambrian Tree Orchestrator (CTO)
 
-Tree-of-Thought agent orchestration for software development. A CLI tool where specialised agents debate solutions in round-table format, branch when alternatives emerge, execute leaf paths through the execution layer, rank results with an LLM judge, and visualize saved runs in a local browser UI.
+Tree-of-Thought agent orchestration for software development. A CLI tool where specialised agents debate solutions in round-table format, branch when alternatives emerge, optionally pause for a human plan review, execute leaf paths through the execution layer, rank results with an LLM judge, and visualize saved runs in a local browser UI.
 
 ## How It Works
 
@@ -8,8 +8,9 @@ Tree-of-Thought agent orchestration for software development. A CLI tool where s
 2. A panel of six agents debates the intent in structured rounds
 3. When agents surface fundamentally different approaches, the tree **branches** — each alternative becomes an independent child node
 4. When agents converge, the tree deepens into the next phase
-5. Leaf nodes are submitted to OpenAI Codex for implementation
-6. An LLM judge scores each solution on five dimensions and ranks them
+5. If `--interactive-plan` is enabled, each candidate leaf pauses for a human decision: proceed, revise once, or kill
+6. Surviving leaf nodes are submitted to OpenAI Codex for implementation
+7. An LLM judge scores each solution on six dimensions and ranks them
 
 See [docs/architecture.md](docs/architecture.md) for diagrams.
 
@@ -87,7 +88,7 @@ Options:
       --token-budget <n>     Warn when LLM tokens exceed n
       --leaf-concurrency <n> Max parallel leaf Codex executions (default: 4)
       --prune-threshold <n>  Drop alternatives below confidence
-                             0–1 (default: 0 = no pruning)
+                             0–1 (default: 0.5)
       --cloud-env <id>       Use Codex Cloud env instead of local SDK
       --cloud-attempts <n>   Best-of-N attempts when --cloud-env is set
                              (default: 1)
@@ -99,6 +100,8 @@ Options:
 Each leaf runs in its own subdirectory: `<workdir>/<node-id>/`. Solutions are independent and can be diffed against each other.
 
 Use `--interactive-plan` when you want a human checkpoint before leaf execution. CTO will pause on each candidate leaf and let you proceed, revise once with a new prompt that creates a debated child branch, or kill the branch before Codex execution.
+
+Interactive plan decisions are saved in `.cambrian-tree/<run-id>/state.json`. Revised branches receive a `human-revision` child node, and the revision prompt is included in the next debate plus the final implementation or synthesis prompt. Descendants of a human revision are not prompted again in v1, which keeps the mode to one revision opportunity per original candidate leaf.
 
 ### `list` — show all saved runs
 
@@ -140,13 +143,16 @@ cto resume run-abc123 [--dry-run] [--leaf-concurrency <n>] [--interactive-plan]
 
 Press **Ctrl+C** at any time during a run to pause it — state is saved and you can resume later.
 
+Interactive plan state is also resumable. Already-reviewed leaves are not prompted again, killed leaves remain pruned, and `cto resume <run-id> --interactive-plan` can enable the gate for an older paused run.
+
 ## Cost Control
 
-Three knobs control how much a run will cost:
+Four knobs control how much a run will cost:
 
 1. **Tree size** — `--depth` × `--branching` is the worst-case node count (exponential). The pre-run estimator computes both worst case and an expected case (assumes ~50% of debates branch).
 2. **Pruning** — set `--prune-threshold 0.6` (or similar) to drop alternatives the moderator is unsure about. Below-threshold alternatives never get a debate or a Codex execution. If only one alternative survives, it folds into a consensus child (single path, not a branch).
 3. **Concurrency** — `--leaf-concurrency` controls how many Codex leaf executions run in parallel. Higher = faster wall-clock but more peak load. Doesn't affect total cost.
+4. **Interactive planning** — `--interactive-plan` lets a human kill branches before execution or revise a candidate once so the agents debate the corrected direction before Codex work begins.
 
 The final summary breaks Codex token usage down by input / cached input / output / reasoning so you can see where the budget went.
 
@@ -182,19 +188,22 @@ Each agent is prompted to explicitly surface alternatives. The moderator (a sepa
 
 ## Scoring Dimensions
 
-The LLM judge scores each leaf solution on five weighted dimensions:
+The LLM judge scores each leaf solution on six weighted dimensions:
 
 | Dimension | Weight |
 |---|---|
-| Functional Completeness | 30% |
-| Architectural Quality | 20% |
-| Test Coverage | 20% |
+| Functional Completeness | 25% |
+| Architectural Quality | 15% |
+| Test Coverage | 15% |
 | Intent Alignment | 20% |
+| Real-World Fit | 15% |
 | Simplicity | 10% |
 
 ## State & Persistence
 
 Runs are saved to `.cambrian-tree/<run-id>/state.json` after every node. The tree is always resumable from the last completed node.
+
+When interactive planning is enabled, `TreeNode.humanIntervention` records `proceed`, `revise`, or `kill`. Revision prompts are also stored on `NodeContext.humanRevisionPrompt` so subsequent debate, synthesis, and implementation prompts inherit the human steering instruction.
 
 `cto ui` reads the same saved state and exposes it through a local-only HTTP server:
 
@@ -211,6 +220,7 @@ Runs are saved to `.cambrian-tree/<run-id>/state.json` after every node. The tre
 | Phase 2 — Hardening | ✅ Complete |
 | Phase 3 — Agent quality | ✅ Complete |
 | Phase 4 — Optimise (v0.2) | ✅ Complete |
+| Interactive plan gate | ✅ Complete |
 | Saved-run UI | ✅ Complete |
 
 **Phase 2 delivered:** Zod validation on all LLM responses, exponential-backoff retry (3 attempts, 1s/2s/4s), token budget tracking with warnings, graceful Ctrl+C shutdown with state save.
@@ -218,6 +228,8 @@ Runs are saved to `.cambrian-tree/<run-id>/state.json` after every node. The tre
 **Phase 3 delivered:** Structured `CONTEXT_UPDATE` fields from agents (PRD, acceptance criteria, architecture decisions, implementation spec, test strategy) accumulated and propagated into every child node's context. Agent prompts now explicitly separate prior-round history from current-round speakers, giving each agent clear visibility into who has already spoken this round. Moderator sensitivity tightened — branching now requires cross-agent support, is discouraged in round 1, and defaults to CONTINUE over DIVERGING when ambiguous.
 
 **Phase 4 delivered:** Pre-run cost estimator (expected and worst-case node/token/USD projection, model-aware pricing). Confidence-based pruning — moderator emits a 0–1 score per alternative, branches below `--prune-threshold` are dropped before exploration. Parallel leaf execution and judging via a concurrency-limited pool (`--leaf-concurrency`). Codex Cloud best-of-N support via `--cloud-env` and `--cloud-attempts`. Per-leaf token usage breakdown (input / cached input / output / reasoning) aggregated and shown in the final summary.
+
+**Interactive plan gate delivered:** `--interactive-plan` pauses after debate traversal and before leaf execution. The human can proceed, revise once with a new prompt that creates a debated `human-revision` child, or kill a branch. Decisions persist into run state and resume without re-prompting already-reviewed leaves.
 
 **Saved-run UI delivered:** `cto ui` launches a dependency-light local browser explorer for saved `.cambrian-tree` runs. It includes a run picker, SVG tree canvas, node selection, inspector tabs for summary/debate/context/leaf details, local JSON API routes, and run-id validation before loading state.
 

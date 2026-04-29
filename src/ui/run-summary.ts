@@ -1,4 +1,10 @@
-import type { RunState, TreeNode } from "../types/index.js";
+import type { CodexUsage, RunState, TreeNode } from "../types/index.js";
+
+export interface LeafCodexUsageSummary extends CodexUsage {
+  nodeId: string;
+  label: string;
+  totalTokens: number;
+}
 
 export interface RunSummary {
   id: string;
@@ -8,6 +14,8 @@ export interface RunSummary {
   completedAt?: string;
   leafCount: number;
   bestScore?: number;
+  codexUsageTotal?: CodexUsage;
+  codexUsageByLeaf: LeafCodexUsageSummary[];
 }
 
 export function summarizeRun(run: RunState): RunSummary {
@@ -15,6 +23,26 @@ export function summarizeRun(run: RunState): RunSummary {
   const scoredComposites = leaves
     .map((leaf) => leaf.score?.composite)
     .filter((score): score is number => score !== undefined);
+
+  const codexUsageByLeaf = leaves.flatMap((leaf) => {
+    const usage = leaf.executionResult?.usage;
+    if (!usage) {
+      return [];
+    }
+
+    return [
+      {
+        nodeId: leaf.id,
+        label: leaf.branchLabel || leaf.id,
+        ...copyCodexUsage(usage),
+        totalTokens: totalCodexTokens(usage),
+      },
+    ];
+  });
+  const derivedCodexUsageTotal = addCodexUsage(...codexUsageByLeaf);
+  const codexUsageTotal = run.codexUsageTotal
+    ? copyCodexUsage(run.codexUsageTotal)
+    : derivedCodexUsageTotal;
 
   return {
     id: run.id,
@@ -24,6 +52,8 @@ export function summarizeRun(run: RunState): RunSummary {
     completedAt: run.completedAt,
     leafCount: leaves.length,
     bestScore: scoredComposites.length > 0 ? Math.max(...scoredComposites) : undefined,
+    codexUsageTotal,
+    codexUsageByLeaf,
   };
 }
 
@@ -33,4 +63,38 @@ function collectLeaves(node: TreeNode): TreeNode[] {
   }
 
   return node.children.flatMap((child) => collectLeaves(child));
+}
+
+function addCodexUsage(...usages: CodexUsage[]): CodexUsage | undefined {
+  if (usages.length === 0) {
+    return undefined;
+  }
+
+  return usages.reduce<CodexUsage>(
+    (total, usage) => ({
+      inputTokens: total.inputTokens + usage.inputTokens,
+      cachedInputTokens: total.cachedInputTokens + usage.cachedInputTokens,
+      outputTokens: total.outputTokens + usage.outputTokens,
+      reasoningOutputTokens: total.reasoningOutputTokens + usage.reasoningOutputTokens,
+    }),
+    {
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      reasoningOutputTokens: 0,
+    },
+  );
+}
+
+function copyCodexUsage(usage: CodexUsage): CodexUsage {
+  return {
+    inputTokens: usage.inputTokens,
+    cachedInputTokens: usage.cachedInputTokens,
+    outputTokens: usage.outputTokens,
+    reasoningOutputTokens: usage.reasoningOutputTokens,
+  };
+}
+
+function totalCodexTokens(usage: CodexUsage): number {
+  return usage.inputTokens + usage.outputTokens + usage.reasoningOutputTokens;
 }

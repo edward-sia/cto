@@ -10,6 +10,9 @@
  * - JudgeScore = how well the endgame matches the opening intent
  */
 
+import type { DomainFacts } from "../ground-truth/types.js";
+export type { DomainFacts };
+
 // ─── Agent Roles ─────────────────────────────────────────────────────────────
 
 export const AGENT_ROLES = [
@@ -116,6 +119,7 @@ export interface IntentDecomposition {
 export interface NodeContext {
   originalIntent: string;
   intentDecomposition?: IntentDecomposition;
+  domainFacts?: DomainFacts;
   prd?: string;
   acceptanceCriteria?: string[];
   architectureDecisions?: string[];

@@ -49,3 +49,30 @@ export const TaskAnalysisSchema = z.object({
   selectedAgents: z.array(z.string()),
   rationale: z.string(),
 });
+
+export const SchemaFieldSchema = z.object({
+  name: z.string(),
+  type: z.string(),
+  required: z.boolean(),
+  description: z.string().optional(),
+});
+
+export const SchemaDefinitionSchema = z.object({
+  name: z.string(),
+  fields: z.array(SchemaFieldSchema),
+});
+
+export const ApiEndpointSchema = z.object({
+  method: z.string(),
+  path: z.string(),
+  description: z.string(),
+});
+
+export const DomainFactsSchema = z.object({
+  domain: z.string().min(1),
+  schemas: z.array(SchemaDefinitionSchema).optional(),
+  apiEndpoints: z.array(ApiEndpointSchema).optional(),
+  constraints: z.array(z.string()).default([]),
+  knownAbsences: z.array(z.string()).default([]),
+  rawContext: z.string().optional(),
+});

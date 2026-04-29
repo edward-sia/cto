@@ -402,11 +402,14 @@ export class TreeOrchestrator {
   }
 
   private getAgentsForPhase(phase: TreePhase): AgentRole[] {
-    const selected = this.runState.selectedAgents ?? [];
-    const agents = selected.filter((role) =>
-      AGENT_DEFINITIONS[role].primaryPhases.includes(phase)
-    );
-    return agents.length > 0 ? agents : PHASE_AGENT_MAP[phase];
+    const selected = this.runState.selectedAgents;
+    if (selected && selected.length > 0) {
+      const phaseMatches = selected.filter((role) =>
+        AGENT_DEFINITIONS[role].primaryPhases.includes(phase)
+      );
+      return phaseMatches.length > 0 ? phaseMatches : selected;
+    }
+    return PHASE_AGENT_MAP[phase];
   }
 
   private getPhaseForDepth(depth: number): TreePhase {

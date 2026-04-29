@@ -2,28 +2,31 @@
 
 ![Cambrian Tree Orchestrator hero image: a dark loading-screen past erupting into branching AI agent forms](docs/assets/cambrian-hero.png)
 
-Cambrian turns a single software intent into an explored solution tree. A core panel plus intent-selected specialists debate the problem, branch when grounded alternatives appear, pause for human plan review when requested, execute surviving leaf paths through Codex, score the results with an LLM judge, and save the whole run for inspection in a local browser UI.
+Cambrian turns a single software intent into an explored solution tree. It decomposes the task, selects the right agent panel, debates grounded alternatives, optionally pauses for human plan review, executes or synthesizes surviving leaf paths, scores implementation results with an LLM judge, and saves the whole run for inspection in a local browser UI.
 
 It is built for the moment when "ask one agent once" stops being enough: when you want competing implementation strategies, visible trade-offs, resumable execution, and a ranked set of candidate solutions instead of a single opaque answer.
 
 ## Highlights
 
+- **Intent decomposition** — load-bearing claims, undefined terms, scope boundaries, known unknowns, and feasibility flags are extracted before debate.
 - **Round-table agent debate** — core delivery roles and optional specialists critique the intent from different angles.
 - **Organic branching** — the moderator forks only when agents surface meaningfully different, grounded implementation paths.
-- **Human plan gate** — review candidate leaves before execution, revise one branch, or kill weak directions early.
-- **Parallel leaf execution** — run multiple candidate implementations concurrently through the execution layer.
-- **LLM judging** — rank results across functional completeness, architecture, tests, fit, and simplicity.
-- **Saved-run UI** — inspect the tree, debate history, context updates, execution output, and scores in a local browser.
+- **Implementation or exploration mode** — code-producing tasks execute through Codex; research tasks produce synthesized leaf documents.
+- **Verified ground truth** — inject JSON facts, sample data, or OpenAPI specs so agents do not invent schemas, APIs, or constraints.
+- **Human plan gate** — review candidate leaves in the terminal or browser, revise one branch, or kill weak directions early.
+- **Parallel execution with usage accounting** — run leaves concurrently and track LLM plus Codex input, cached input, output, and reasoning tokens.
+- **Saved-run UI** — inspect the tree, debate history, context updates, execution output, Codex usage, and scores in a local browser.
 
 ## How It Works
 
-1. You provide a high-level intent (`"Build a REST API for a todo app"`)
-2. A task analyzer selects the relevant core and specialist agents, then the panel debates the intent in structured rounds
+1. You provide a high-level intent (`"Build a REST API for a todo app"`) and optional verified ground truth
+2. The analyzer decomposes the intent, chooses implementation or exploration mode, and selects the relevant core and specialist agents
 3. When agents surface fundamentally different approaches, the tree **branches** — each alternative becomes an independent child node
 4. When agents converge, the tree deepens into the next phase
 5. If `--interactive-plan` is enabled, each candidate leaf pauses for a human decision: proceed, revise once, or kill
-6. Surviving leaf nodes are submitted to OpenAI Codex for implementation
-7. An LLM judge scores each solution on six dimensions and ranks them
+6. In implementation mode, surviving leaf nodes are submitted to OpenAI Codex for implementation
+7. In exploration mode, surviving leaf nodes produce structured synthesis documents instead of code
+8. Implementation results are judged on six dimensions and ranked
 
 See [docs/architecture.md](docs/architecture.md) for the system diagrams and layer-by-layer architecture.
 
@@ -81,9 +84,9 @@ To inspect saved or running runs visually:
 cto ui
 ```
 
-This launches a local run monitor with a run picker, tree canvas, and node inspector. It updates running runs in near real time from the saved `.cambrian-tree` state.
+This launches a local run monitor with a saved-run picker, live tree canvas, zoom controls, inspector tabs, score badges, Codex usage summaries, and browser controls for pending human plan reviews. It updates running runs in near real time from the saved `.cambrian-tree` state.
 
-![Saved-run UI showing a branch tree and node inspector](docs/assets/cto-ui-saved-run.png)
+![Dark saved-run UI showing the run picker, branch tree, inspector tabs, and Codex usage summary](docs/assets/cto-ui-saved-run.png)
 
 ## CLI Reference
 
@@ -100,12 +103,14 @@ Options:
   -w, --workdir <path>       Working dir for Codex             (default: cwd)
       --token-budget <n>     Warn when LLM tokens exceed n
       --leaf-concurrency <n> Max parallel leaf Codex executions (default: 4)
-      --prune-threshold <n>  Drop alternatives below confidence
+      --prune-threshold <n>  Drop alternatives below confidence × relevance
                              0–1 (default: 0.5)
       --cloud-env <id>       Use Codex Cloud env instead of local SDK
       --cloud-attempts <n>   Best-of-N attempts when --cloud-env is set
                              (default: 1)
       --dry-run              No LLM or Codex calls — exercise tree shape only
+      --ground-truth <spec>  Inject verified facts from file:, sample:, or
+                             openapi: sources
       --interactive-plan     Review candidate leaves before implementation
       --monitor              Open the live browser monitor for this run
       --ui-review            Use the browser UI for interactive plan decisions
@@ -114,7 +119,17 @@ Options:
 
 Each leaf runs in its own subdirectory: `<workdir>/<node-id>/`. Solutions are independent and can be diffed against each other.
 
-Use `--interactive-plan` when you want a human checkpoint before leaf execution. CTO will pause on each candidate leaf and let you proceed, revise once with a new prompt that creates a debated child branch, or kill the branch before Codex execution.
+Use `--ground-truth` when agents need source-checked facts instead of inferred assumptions:
+
+```bash
+cto run "Build an API for this schema" --ground-truth openapi:./openapi.yaml
+cto run "Analyze this export and propose a migration" --ground-truth sample:./export.csv
+cto run "Build from these domain constraints" --ground-truth file:./facts.json
+```
+
+`file:` expects JSON matching the `DomainFacts` shape: `domain`, optional `schemas`, optional `apiEndpoints`, `constraints`, `knownAbsences`, and optional `rawContext`. `sample:` reads CSV or JSON data and extracts a schema summary. `openapi:` reads JSON or YAML OpenAPI specs and extracts routes plus component schemas.
+
+Use `--interactive-plan` when you want a human checkpoint before leaf execution or exploration synthesis. CTO will pause on each candidate leaf and let you proceed, revise once with a new prompt that creates a debated child branch, or kill the branch before expensive work starts.
 
 Use `--monitor` to open the local browser monitor when the run starts:
 
@@ -131,6 +146,15 @@ cto run "Build X" --ui-review
 When a candidate leaf needs review, the selected node inspector shows Proceed, Revise, and Kill controls. Browser decisions are written as control files under `.cambrian-tree/<run-id>/control/`; the orchestrator remains the only writer of canonical `state.json`.
 
 Interactive plan decisions are saved in `.cambrian-tree/<run-id>/state.json`. Revised branches receive a `human-revision` child node, and the revision prompt is included in the next debate plus the final implementation or synthesis prompt. Descendants of a human revision are not prompted again in v1, which keeps the mode to one revision opportunity per original candidate leaf.
+
+## Run Modes
+
+CTO classifies each intent before the tree is built:
+
+- **Implementation** — feature work, bug fixes, refactors, APIs, services, and other code-producing tasks. Leaves execute through Codex, then the judge ranks the resulting implementations.
+- **Exploration** — research questions, feasibility studies, data analysis, and planning spikes. Leaves produce structured synthesis documents without Codex execution or judge scoring.
+
+The analyzer also selects specialists only when grounded in the intent or verified context. A frontend task can pull in UX and Frontend Engineering; an API contract task can pull in API / Integration Architecture; a pure research prompt can stay with Research Planner, Business Analyst, and Data Analyst.
 
 ### `list` — show all saved runs
 
@@ -159,8 +183,9 @@ cto ui [run-id] [--port 43187] [--no-open]
 The UI reads saved state from `.cambrian-tree`, serves a local browser app, streams selected run snapshots, and lets you inspect:
 
 - saved runs and run metadata
-- the full branch tree as an interactive canvas
-- node summaries, debate rounds, context updates, leaf execution output, changed files, tests, Codex usage, and judge scores
+- the full branch tree as an interactive canvas, with zoom controls, score badges, phase/status styling, and a show-pruned toggle
+- node summaries, debate rounds, intent decomposition, accumulated context updates, leaf execution or synthesis output, changed files, tests, Codex usage, and judge scores
+- aggregate and per-leaf Codex usage totals when usage data is available
 - pending human plan reviews, with Proceed / Revise / Kill controls when the run is waiting for browser input
 
 If `run-id` is provided, the UI opens that run directly. Use `--no-open` to print the local URL without opening a browser.
@@ -177,12 +202,13 @@ Interactive plan state is also resumable. Already-reviewed leaves are not prompt
 
 ## Cost Control
 
-Four knobs control how much a run will cost:
+Five knobs control how much a run will cost:
 
 1. **Tree size** — `--depth` × `--branching` is the worst-case node count (exponential). The pre-run estimator computes both worst case and an expected case (assumes ~50% of debates branch).
 2. **Pruning** — set `--prune-threshold 0.6` (or similar) to drop alternatives the moderator is unsure about. Below-threshold alternatives never get a debate or a Codex execution. If only one alternative survives, it folds into a consensus child (single path, not a branch).
 3. **Concurrency** — `--leaf-concurrency` controls how many Codex leaf executions run in parallel. Higher = faster wall-clock but more peak load. Doesn't affect total cost.
-4. **Interactive planning** — `--interactive-plan` lets a human kill branches before execution or revise a candidate once so the agents debate the corrected direction before Codex work begins.
+4. **Run mode** — exploration mode synthesizes documents from leaf debates and skips Codex execution plus judge scoring.
+5. **Interactive planning** — `--interactive-plan` lets a human kill branches before execution or synthesis, or revise a candidate once so the agents debate the corrected direction before expensive work begins.
 
 The final summary breaks Codex token usage down by input / cached input / output / reasoning so you can see where the budget went.
 
@@ -205,7 +231,7 @@ codex cloud apply <task-id>      # apply the diff to the leaf workdir
 
 ## Agent Panel
 
-CTO includes a core software-delivery panel plus opt-in specialists. The default implementation panel is Product Manager, Business Analyst, Tech Lead, Developer, Code Reviewer, and QA Engineer; domain specialists are selected only when the intent grounds that specialty.
+CTO includes a core software-delivery panel plus opt-in specialists. A task analyzer chooses the run mode and panel before traversal. The default implementation panel is Product Manager, Business Analyst, Tech Lead, Developer, Code Reviewer, and QA Engineer; exploration runs default toward Research Planner, Business Analyst, and Data Analyst. Domain specialists are selected only when the intent or ground-truth context supports that specialty.
 
 | Phase | Agents |
 |---|---|
@@ -215,6 +241,8 @@ CTO includes a core software-delivery panel plus opt-in specialists. The default
 | Validation | Product Manager, Business Analyst, Developer, Code Reviewer, QA Engineer |
 
 Available specialists are Research Planner, Data Engineer, Data Analyst, Security Engineer, ML Engineer, DevOps Engineer, UX Designer, Frontend Engineer, API / Integration Architect, Performance Engineer, and Technical Writer. Each persona has explicit `Does` / `Does Not` boundaries and a shared evidence rule: do not invent facts, benchmarks, studies, prices, usage volumes, latency targets, compliance obligations, schemas, APIs, users, or business goals. Unknowns must be labelled as `UNKNOWN` / `ASSUMPTION`, asked as challenge questions, or deferred to a verification spike.
+
+Verified ground truth, when provided, is rendered into the agent context and treated as a stronger source than agent intuition. This is the preferred way to give CTO schemas, API contracts, sample-data constraints, known absences, or domain facts.
 
 The Research Planner is an evidence-skeptic role, not a source generator. It may only treat prior art as grounded when it appears in verified domain facts, source-checked context, or the original intent.
 
@@ -237,6 +265,8 @@ The LLM judge scores each leaf solution on six weighted dimensions:
 
 Runs are saved to `.cambrian-tree/<run-id>/state.json` after every node. The tree is always resumable from the last completed node.
 
+Run state records the selected run mode, selected agents, leaf IDs, ranked results for implementation runs, LLM usage, aggregate Codex usage, and any pending browser review request. Node context records the original intent, intent decomposition, verified domain facts, PRD notes, acceptance criteria, architecture decisions, implementation specs, test strategy, branch decisions, human revision prompts, and ancestor summaries.
+
 When interactive planning is enabled, `TreeNode.humanIntervention` records `proceed`, `revise`, or `kill`. Revision prompts are also stored on `NodeContext.humanRevisionPrompt` so subsequent debate, synthesis, and implementation prompts inherit the human steering instruction.
 
 `cto ui` reads the same saved state and exposes it through a local-only HTTP server:
@@ -258,6 +288,10 @@ When interactive planning is enabled, `TreeNode.humanIntervention` records `proc
 | Phase 4 — Optimise (v0.2) | ✅ Complete |
 | Interactive plan gate | ✅ Complete |
 | Live run monitor | ✅ Complete |
+| Dynamic run modes and specialist selection | ✅ Complete |
+| Intent decomposition and ground-truth inputs | ✅ Complete |
+| Browser plan review controls | ✅ Complete |
+| Codex usage reporting in CLI and UI | ✅ Complete |
 
 **Phase 2 delivered:** Zod validation on all LLM responses, exponential-backoff retry (3 attempts, 1s/2s/4s), token budget tracking with warnings, graceful Ctrl+C shutdown with state save.
 
@@ -265,8 +299,10 @@ When interactive planning is enabled, `TreeNode.humanIntervention` records `proc
 
 **Phase 4 delivered:** Pre-run cost estimator (expected and worst-case node/token/USD projection, model-aware pricing). Confidence-based pruning — moderator emits a 0–1 score per alternative, branches below `--prune-threshold` are dropped before exploration. Parallel leaf execution and judging via a concurrency-limited pool (`--leaf-concurrency`). Codex Cloud best-of-N support via `--cloud-env` and `--cloud-attempts`. Per-leaf token usage breakdown (input / cached input / output / reasoning) aggregated and shown in the final summary.
 
-**Interactive plan gate delivered:** `--interactive-plan` pauses after debate traversal and before leaf execution. The human can proceed, revise once with a new prompt that creates a debated `human-revision` child, or kill a branch. Decisions persist into run state and resume without re-prompting already-reviewed leaves.
+**Latest orchestration updates:** CTO now decomposes intent before debate, classifies runs as implementation or exploration, selects specialists dynamically, supports verified `--ground-truth` providers (`file:`, `sample:`, `openapi:`), and synthesizes exploration leaves without Codex execution.
 
-**Live run monitor delivered:** `cto ui` launches a dependency-light local browser monitor for saved and running `.cambrian-tree` runs. It includes a run picker, SVG tree canvas, node selection, inspector tabs for summary/debate/context/leaf details, server-sent event updates for the selected run, browser controls for pending interactive plan reviews, local JSON/control API routes, and run-id validation before loading state.
+**Interactive plan gate delivered:** `--interactive-plan` pauses after debate traversal and before leaf execution or synthesis. The human can proceed, revise once with a new prompt that creates a debated `human-revision` child, or kill a branch. Decisions persist into run state and resume without re-prompting already-reviewed leaves. `--ui-review` exposes the same decision flow in the saved-run UI.
+
+**Live run monitor delivered:** `cto ui` launches a dependency-light local browser monitor for saved and running `.cambrian-tree` runs. It includes a run picker, dark SVG tree canvas, node selection, inspector tabs for summary/debate/context/leaf details, score badges, Codex usage totals, server-sent event updates for the selected run, browser controls for pending interactive plan reviews, local JSON/control API routes, and run-id validation before loading state.
 
 See [CLAUDE.md](CLAUDE.md) for the full work plan and known issues.

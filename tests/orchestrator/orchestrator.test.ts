@@ -36,6 +36,33 @@ describe("TreeOrchestrator", () => {
     expect(state.rankedResults?.length).toBeGreaterThan(0);
   });
 
+  it("reports the run state after the first save creates a run id", async () => {
+    const observed: Array<{ id: string; status: string; rootId: string }> = [];
+    const onRunStarted = vi.fn((run) => {
+      observed.push({ id: run.id, status: run.status, rootId: run.root.id });
+    });
+    const orchestrator = new TreeOrchestrator(
+      {} as OpenAI,
+      {
+        dryRun: true,
+        maxDepth: 1,
+        maxDebateRounds: 1,
+        leafConcurrency: 2,
+        pruneThreshold: 0,
+      },
+      { onRunStarted }
+    );
+
+    const state = await orchestrator.run("Build a REST API");
+
+    expect(onRunStarted).toHaveBeenCalledOnce();
+    expect(observed).toEqual([{
+      id: state.id,
+      status: "running",
+      rootId: state.root.id,
+    }]);
+  });
+
   it("uses analyzer-selected agents even when none have the phase as primary", () => {
     const orchestrator = new TreeOrchestrator({} as OpenAI, { dryRun: true });
     (orchestrator as unknown as { runState: { selectedAgents: string[] } }).runState = {
@@ -119,6 +146,35 @@ describe("TreeOrchestrator", () => {
     expect(leaves).toHaveLength(2);
     expect(leaves.every((leaf) => leaf.humanIntervention?.action === "proceed")).toBe(true);
     expect(state.rankedResults?.length).toBe(2);
+  });
+
+  it("persists a pending human-review request while waiting for the decision", async () => {
+    let pendingDuringReview;
+    const onHumanPlanReview = vi.fn(async (_node, state) => {
+      pendingDuringReview = state.pendingHumanReview;
+      return { action: "proceed" as const };
+    });
+    const orchestrator = new TreeOrchestrator(
+      {} as OpenAI,
+      {
+        dryRun: true,
+        interactivePlan: true,
+        maxDepth: 1,
+        maxDebateRounds: 1,
+        leafConcurrency: 2,
+        pruneThreshold: 0,
+      },
+      { onHumanPlanReview }
+    );
+
+    const state = await orchestrator.run("Build a REST API");
+
+    expect(pendingDuringReview).toEqual({
+      requestId: expect.stringMatching(/^review-/),
+      nodeId: expect.stringMatching(/^node-/),
+      createdAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+    });
+    expect(state.pendingHumanReview).toBeUndefined();
   });
 
   it("prunes killed leaves and excludes them from execution", async () => {

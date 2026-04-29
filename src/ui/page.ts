@@ -30,122 +30,246 @@ function serializeScriptValue(value: string | null): string {
 function css(): string {
   return `
     :root {
-      color-scheme: light;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      --bg: #eef3f8;
-      --surface: rgba(255, 255, 255, 0.82);
-      --surface-solid: #ffffff;
-      --surface-muted: rgba(244, 247, 251, 0.88);
-      --text: #111827;
-      --muted: #64748b;
-      --border: rgba(148, 163, 184, 0.28);
-      --strong-border: rgba(100, 116, 139, 0.3);
-      --accent: #007aff;
-      --accent-soft: rgba(0, 122, 255, 0.1);
-      --agent: #5e5ce6;
-      --agent-soft: rgba(94, 92, 230, 0.1);
-      --success: #15803d;
-      --danger: #b91c1c;
-      --warning: #b45309;
-      --purple: #8b5cf6;
-      --glass-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
-      --hairline: rgba(255, 255, 255, 0.72);
+      color-scheme: dark;
+      --bg: #05070d;
+      --bg-elevated: #070b13;
+      --canvas: #09111d;
+      --panel: rgba(10, 17, 28, 0.88);
+      --panel-solid: #0a111c;
+      --panel-raised: #111a29;
+      --panel-muted: #0e1624;
+      --line: rgba(119, 149, 190, 0.16);
+      --line-strong: rgba(132, 168, 214, 0.28);
+      --text: #e7f4ff;
+      --text-strong: #ffffff;
+      --muted: #7f8fa8;
+      --muted-2: #536279;
+      --signal: #00f5d4;
+      --signal-rgb: 0, 245, 212;
+      --signal-soft: rgba(0, 245, 212, 0.12);
+      --blue: #49a9ff;
+      --branch: #a970ff;
+      --branch-soft: rgba(169, 112, 255, 0.16);
+      --human: #ff8bd1;
+      --human-soft: rgba(255, 139, 209, 0.14);
+      --success: #00d7a7;
+      --success-soft: rgba(0, 215, 167, 0.13);
+      --paused: #f2c94c;
+      --paused-soft: rgba(242, 201, 76, 0.14);
+      --failed: #ff4d73;
+      --failed-soft: rgba(255, 77, 115, 0.14);
+      --score: #4c8dff;
+      --agent: #a970ff;
+      --agent-soft: rgba(169, 112, 255, 0.14);
+      --radius-xs: 4px;
+      --radius-sm: 6px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --shadow-glow: 0 0 22px rgba(var(--signal-rgb), 0.24);
+      --shadow-panel: 0 18px 50px rgba(0, 0, 0, 0.34);
+      --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
     }
 
     * { box-sizing: border-box; }
 
     body {
       margin: 0;
-      min-width: 1120px;
+      min-width: 320px;
       background:
-        linear-gradient(135deg, #f8fbff 0%, #edf3f8 44%, #f6f8fb 100%);
+        radial-gradient(circle at 24% 18%, rgba(0, 245, 212, 0.1), transparent 28rem),
+        radial-gradient(circle at 88% 12%, rgba(169, 112, 255, 0.13), transparent 24rem),
+        linear-gradient(180deg, #060913 0%, var(--bg) 42%, #03050a 100%);
       color: var(--text);
+      font-family: var(--font-ui);
+      letter-spacing: 0;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      background:
+        linear-gradient(rgba(83, 98, 121, 0.09) 1px, transparent 1px) 0 0 / 32px 32px,
+        linear-gradient(90deg, rgba(83, 98, 121, 0.09) 1px, transparent 1px) 0 0 / 32px 32px;
+      mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.68), transparent 82%);
     }
 
     button {
+      border: 0;
       font: inherit;
     }
 
     .app-shell {
       height: 100vh;
       display: grid;
-      grid-template-rows: 52px minmax(0, 1fr);
+      grid-template-rows: 58px minmax(0, 1fr);
       overflow: hidden;
-      background: rgba(255, 255, 255, 0.18);
     }
 
     .topbar {
-      display: flex;
+      display: grid;
+      grid-template-columns: minmax(270px, 1fr) minmax(0, 1.25fr);
       align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 0 16px;
-      border-bottom: 1px solid var(--border);
-      background: rgba(255, 255, 255, 0.72);
-      backdrop-filter: blur(22px) saturate(1.55);
-      -webkit-backdrop-filter: blur(22px) saturate(1.55);
+      gap: 24px;
+      padding: 0 24px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(5, 7, 13, 0.84);
+      backdrop-filter: blur(22px) saturate(1.3);
+      -webkit-backdrop-filter: blur(22px) saturate(1.3);
     }
 
     .brand {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
       min-width: 0;
-      font-weight: 800;
-      letter-spacing: 0;
+      color: var(--text-strong);
+    }
+
+    .brand-copy {
+      display: grid;
+      gap: 1px;
+      min-width: 0;
+    }
+
+    .brand-copy strong {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 14px;
+      line-height: 1.2;
+    }
+
+    .brand-copy span {
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
     }
 
     .brand-mark {
       width: 34px;
-      height: 24px;
-      border-radius: 6px;
+      height: 28px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: var(--radius-md);
       background:
-        linear-gradient(135deg, rgba(0, 122, 255, 0.95), rgba(94, 92, 230, 0.95));
-      color: #ffffff;
+        linear-gradient(135deg, rgba(0, 245, 212, 0.95), rgba(73, 169, 255, 0.88));
+      color: #062022;
       display: grid;
       place-items: center;
-      font-size: 11px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 950;
       line-height: 1;
       flex: 0 0 auto;
-      box-shadow: 0 8px 18px rgba(0, 122, 255, 0.24);
+      box-shadow: var(--shadow-glow);
     }
 
     .topbar-meta {
       min-width: 0;
       display: flex;
       align-items: center;
-      gap: 10px;
+      justify-content: flex-end;
+      gap: 12px;
       color: var(--muted);
-      font-size: 12px;
-      white-space: nowrap;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 850;
     }
 
-    .status-pill {
-      max-width: 240px;
+    .topbar-detail {
+      min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
-      border: 1px solid var(--border);
+      white-space: nowrap;
+      color: #cbd8eb;
+    }
+
+    .status-pill,
+    .meta-chip,
+    .score-chip,
+    .inspector-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-height: 22px;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      border: 1px solid var(--line);
       border-radius: 999px;
-      padding: 4px 9px;
-      background: rgba(255, 255, 255, 0.66);
-      color: #334155;
-      font-weight: 700;
+      padding: 0 8px;
+      background: rgba(255, 255, 255, 0.035);
+      color: #93a2bb;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      font-weight: 950;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    .status-pill::before,
+    .meta-chip.status-chip::before,
+    .inspector-chip.status-chip::before {
+      content: "";
+      display: inline-block;
+      width: 5px;
+      height: 5px;
+      border-radius: 999px;
+      background: currentColor;
+      box-shadow: 0 0 10px currentColor;
+    }
+
+    .status-completed,
+    .status-scored,
+    .status-consensus {
+      border-color: rgba(0, 215, 167, 0.3);
+      background: var(--success-soft);
+      color: var(--success);
+    }
+
+    .status-running,
+    .status-debating,
+    .status-executing,
+    .status-branched {
+      border-color: rgba(0, 245, 212, 0.34);
+      background: var(--signal-soft);
+      color: var(--signal);
+    }
+
+    .status-paused,
+    .status-pending {
+      border-color: rgba(242, 201, 76, 0.34);
+      background: var(--paused-soft);
+      color: var(--paused);
+    }
+
+    .status-failed,
+    .status-pruned,
+    .status-error {
+      border-color: rgba(255, 77, 115, 0.34);
+      background: var(--failed-soft);
+      color: var(--failed);
     }
 
     .main {
       min-height: 0;
       display: grid;
-      grid-template-columns: 300px minmax(360px, 1fr) clamp(460px, 34vw, 640px);
+      grid-template-columns: 300px minmax(420px, 1fr) clamp(420px, 34vw, 620px);
     }
 
     .runs {
       min-height: 0;
       overflow: auto;
-      border-right: 1px solid var(--border);
-      background: var(--surface-muted);
+      border-right: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(7, 15, 25, 0.96), rgba(3, 6, 10, 0.98));
       padding: 12px;
-      backdrop-filter: blur(18px) saturate(1.35);
-      -webkit-backdrop-filter: blur(18px) saturate(1.35);
     }
 
     .panel-heading {
@@ -154,10 +278,11 @@ function css(): string {
       justify-content: space-between;
       gap: 8px;
       margin: 0 0 10px;
-      color: #334155;
+      color: var(--muted);
+      font-family: var(--font-mono);
       font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 0.08em;
+      font-weight: 900;
+      letter-spacing: 0.14em;
       text-transform: uppercase;
     }
 
@@ -167,30 +292,33 @@ function css(): string {
     }
 
     .run {
+      position: relative;
       width: 100%;
       text-align: left;
-      border: 1px solid rgba(148, 163, 184, 0.25);
-      background: rgba(255, 255, 255, 0.68);
-      border-radius: 8px;
-      padding: 10px;
+      border: 1px solid rgba(119, 149, 190, 0.14);
+      background: rgba(14, 22, 36, 0.74);
+      border-radius: var(--radius-md);
+      padding: 11px;
+      color: inherit;
       cursor: pointer;
-      box-shadow: 0 1px 0 var(--hairline), 0 10px 28px rgba(15, 23, 42, 0.04);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
       transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
     }
 
     .run:hover {
-      background: rgba(255, 255, 255, 0.9);
-      border-color: rgba(0, 122, 255, 0.36);
+      background: rgba(17, 28, 45, 0.9);
+      border-color: rgba(var(--signal-rgb), 0.34);
       transform: translateY(-1px);
     }
 
     .run.active {
-      border-color: var(--accent);
-      background: rgba(255, 255, 255, 0.94);
+      border-color: rgba(var(--signal-rgb), 0.68);
+      background:
+        linear-gradient(90deg, rgba(var(--signal-rgb), 0.13), transparent 60%),
+        rgba(12, 22, 35, 0.92);
       box-shadow:
-        inset 3px 0 0 var(--accent),
-        0 1px 0 var(--hairline),
-        0 16px 36px rgba(0, 122, 255, 0.12);
+        inset 3px 0 0 var(--signal),
+        0 0 22px rgba(var(--signal-rgb), 0.12);
     }
 
     .run-title {
@@ -199,19 +327,21 @@ function css(): string {
       text-overflow: ellipsis;
       white-space: nowrap;
       color: var(--text);
-      font-size: 13px;
-      font-weight: 800;
-      line-height: 1.35;
+      font-size: 12px;
+      font-weight: 850;
+      line-height: 1.3;
     }
 
     .run-id {
-      margin-top: 3px;
+      margin-top: 4px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      color: #64748b;
-      font-size: 11px;
-      line-height: 1.3;
+      color: var(--muted-2);
+      font-family: var(--font-mono);
+      font-size: 9px;
+      font-weight: 800;
+      line-height: 1.35;
     }
 
     .run-meta {
@@ -221,25 +351,10 @@ function css(): string {
       margin-top: 8px;
     }
 
-    .meta-chip {
-      min-width: 0;
-      max-width: 100%;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      border: 1px solid rgba(148, 163, 184, 0.24);
-      border-radius: 999px;
-      padding: 3px 7px;
-      background: rgba(255, 255, 255, 0.7);
-      color: #475569;
-      font-size: 11px;
-      font-weight: 700;
-      line-height: 1.2;
-    }
-
-    .run-meta .meta-chip:last-child {
-      flex-basis: 100%;
-      width: fit-content;
+    .score-chip {
+      border-color: rgba(var(--signal-rgb), 0.22);
+      background: rgba(var(--signal-rgb), 0.08);
+      color: var(--signal);
     }
 
     .canvas {
@@ -248,17 +363,16 @@ function css(): string {
       min-height: 0;
       overflow: hidden;
       background:
-        linear-gradient(rgba(148, 163, 184, 0.18) 1px, transparent 1px) 0 0 / 28px 28px,
-        linear-gradient(90deg, rgba(148, 163, 184, 0.18) 1px, transparent 1px) 0 0 / 28px 28px,
-        linear-gradient(135deg, rgba(255, 255, 255, 0.62), rgba(238, 243, 248, 0.72));
+        radial-gradient(circle at 44% 52%, rgba(0, 245, 212, 0.1), transparent 240px),
+        linear-gradient(rgba(119, 149, 190, 0.09) 1px, transparent 1px) 0 0 / 28px 28px,
+        linear-gradient(90deg, rgba(119, 149, 190, 0.09) 1px, transparent 1px) 0 0 / 28px 28px,
+        var(--canvas);
     }
 
     .canvas-toolbar {
       position: absolute;
       z-index: 2;
-      top: 12px;
-      left: 12px;
-      right: 12px;
+      inset: 14px 14px auto;
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
@@ -269,40 +383,133 @@ function css(): string {
     .toolbar-group {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 6px;
       pointer-events: auto;
     }
 
     .tool-button,
     .toggle-button {
-      min-height: 32px;
-      border: 1px solid rgba(148, 163, 184, 0.32);
-      background: rgba(255, 255, 255, 0.76);
-      backdrop-filter: blur(18px) saturate(1.45);
-      -webkit-backdrop-filter: blur(18px) saturate(1.45);
-      border-radius: 7px;
-      padding: 7px 9px;
-      color: #334155;
+      min-height: 30px;
+      border: 1px solid var(--line);
+      background: rgba(9, 17, 29, 0.8);
+      border-radius: var(--radius-sm);
+      padding: 0 10px;
+      color: #b8c6dc;
       cursor: pointer;
-      font-size: 12px;
-      font-weight: 800;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 950;
+      letter-spacing: 0.08em;
       line-height: 1;
-      box-shadow: 0 1px 0 var(--hairline), 0 12px 24px rgba(15, 23, 42, 0.08);
+      text-transform: uppercase;
       transition: background 140ms ease, border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
     }
 
     .tool-button:hover,
     .toggle-button:hover {
-      border-color: rgba(0, 122, 255, 0.42);
-      background: rgba(255, 255, 255, 0.92);
+      border-color: rgba(var(--signal-rgb), 0.42);
+      background: rgba(var(--signal-rgb), 0.1);
+      color: var(--signal);
       transform: translateY(-1px);
     }
 
     .toggle-button.active {
-      border-color: var(--accent);
-      color: #0057c2;
-      background: rgba(0, 122, 255, 0.1);
-      box-shadow: inset 0 0 0 1px rgba(0, 122, 255, 0.14), 0 12px 24px rgba(0, 122, 255, 0.12);
+      border-color: rgba(var(--signal-rgb), 0.42);
+      color: var(--signal);
+      background: rgba(var(--signal-rgb), 0.12);
+      box-shadow: 0 0 18px rgba(var(--signal-rgb), 0.1);
+    }
+
+    .review-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .review-button {
+      min-height: 32px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius-sm);
+      padding: 0 12px;
+      background: rgba(17, 26, 41, 0.92);
+      color: var(--text);
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 950;
+      text-transform: uppercase;
+      transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+    }
+
+    .review-button:hover:not(:disabled) {
+      transform: translateY(-1px);
+    }
+
+    .review-button.primary {
+      border-color: rgba(0, 215, 167, 0.42);
+      background: rgba(0, 215, 167, 0.14);
+      color: var(--success);
+    }
+
+    .review-button.danger {
+      border-color: rgba(255, 77, 115, 0.38);
+      background: rgba(255, 77, 115, 0.13);
+      color: var(--failed);
+    }
+
+    .review-button:disabled {
+      cursor: wait;
+      opacity: 0.58;
+    }
+
+    .review-textarea {
+      width: 100%;
+      min-height: 86px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: rgba(5, 10, 18, 0.72);
+      color: var(--text);
+      font: 12px/1.5 var(--font-ui);
+      padding: 10px;
+      outline: none;
+    }
+
+    .review-textarea:focus {
+      border-color: rgba(var(--signal-rgb), 0.48);
+      box-shadow: 0 0 0 3px rgba(var(--signal-rgb), 0.08);
+    }
+
+    .review-error {
+      margin-top: 10px;
+      color: var(--failed);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .canvas-footer {
+      position: absolute;
+      z-index: 2;
+      left: 16px;
+      bottom: 14px;
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      max-width: calc(100% - 32px);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: rgba(4, 8, 14, 0.74);
+      padding: 7px 9px;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 9px;
+      font-weight: 950;
+      text-transform: uppercase;
+    }
+
+    .canvas-footer strong {
+      color: var(--signal);
     }
 
     .tree-svg {
@@ -318,55 +525,117 @@ function css(): string {
     }
 
     .edge {
-      stroke: rgba(94, 92, 230, 0.42);
-      stroke-width: 2;
+      stroke: url("#branchGradient");
+      stroke-width: 2.1;
+      stroke-linecap: round;
+      stroke-dasharray: 8 10;
       fill: none;
+      filter: drop-shadow(0 0 4px rgba(var(--signal-rgb), 0.36));
+      animation: branchFlow 4.8s linear infinite;
+    }
+
+    .edge-status-pruned,
+    .edge-status-failed {
+      stroke: rgba(255, 77, 115, 0.62);
+      stroke-dasharray: 2 9;
+      filter: none;
+    }
+
+    .edge-status-consensus,
+    .edge-status-scored,
+    .edge-status-completed {
+      stroke: rgba(0, 215, 167, 0.62);
+    }
+
+    .edge-human-revision {
+      stroke: rgba(255, 139, 209, 0.76);
+      filter: drop-shadow(0 0 4px rgba(255, 139, 209, 0.28));
     }
 
     .node-card {
       cursor: pointer;
+      outline: none;
     }
 
     .node-rect {
-      fill: rgba(255, 255, 255, 0.88);
-      stroke: rgba(148, 163, 184, 0.34);
-      stroke-width: 1;
-      filter: drop-shadow(0 12px 22px rgba(15, 23, 42, 0.08));
+      fill: rgba(13, 22, 35, 0.94);
+      stroke: rgba(119, 149, 190, 0.22);
+      stroke-width: 1.2;
+      filter: drop-shadow(0 12px 22px rgba(0, 0, 0, 0.22));
+      transition: stroke 160ms ease, filter 160ms ease;
     }
 
     .node-rect.selected {
-      stroke: var(--accent);
+      stroke: var(--signal);
       stroke-width: 2;
-      filter: drop-shadow(0 18px 30px rgba(0, 122, 255, 0.18));
+      filter: drop-shadow(0 0 9px rgba(var(--signal-rgb), 0.42));
+    }
+
+    .node-card:hover .node-rect,
+    .node-card:focus-visible .node-rect {
+      stroke: rgba(var(--signal-rgb), 0.78);
+      filter: drop-shadow(0 0 9px rgba(var(--signal-rgb), 0.34));
+    }
+
+    .node-status-pruned .node-rect {
+      fill: rgba(16, 15, 22, 0.94);
+      stroke: rgba(255, 77, 115, 0.62);
+    }
+
+    .node-human-revision .node-rect {
+      stroke: rgba(255, 139, 209, 0.68);
+    }
+
+    .node-status-consensus .node-rect,
+    .node-status-completed .node-rect,
+    .node-status-scored .node-rect {
+      stroke: rgba(0, 215, 167, 0.38);
+    }
+
+    .node-phase-architecture .node-rect {
+      fill: rgba(17, 22, 39, 0.94);
+    }
+
+    .node-phase-implementation .node-rect {
+      fill: rgba(11, 26, 30, 0.94);
+    }
+
+    .node-phase-validation .node-rect {
+      fill: rgba(26, 23, 15, 0.94);
     }
 
     .node-label {
-      fill: #0f172a;
-      font-size: 13px;
-      font-weight: 800;
+      fill: var(--text);
+      font-family: var(--font-ui);
+      font-size: 12px;
+      font-weight: 850;
     }
 
     .node-secondary {
-      fill: #64748b;
-      font-size: 11px;
-      font-weight: 700;
+      fill: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 9px;
+      font-weight: 900;
+      letter-spacing: 0.06em;
     }
 
     .score-badge {
-      fill: rgba(0, 122, 255, 0.1);
-      stroke: rgba(0, 122, 255, 0.22);
+      fill: rgba(var(--signal-rgb), 0.08);
+      stroke: rgba(var(--signal-rgb), 0.22);
       stroke-width: 1;
     }
 
     .score-text {
-      fill: #0057c2;
+      fill: var(--signal);
+      font-family: var(--font-mono);
       font-size: 10px;
       font-weight: 900;
     }
 
     .node-id {
-      fill: #94a3b8;
-      font-size: 10px;
+      fill: var(--muted-2);
+      font-family: var(--font-mono);
+      font-size: 9px;
       font-weight: 800;
     }
 
@@ -374,18 +643,14 @@ function css(): string {
       min-width: 0;
       min-height: 0;
       overflow: auto;
-      border-left: 1px solid var(--border);
-      background: rgba(244, 247, 251, 0.72);
-      backdrop-filter: blur(18px) saturate(1.25);
-      -webkit-backdrop-filter: blur(18px) saturate(1.25);
+      border-left: 1px solid var(--line);
+      background: rgba(6, 10, 18, 0.92);
     }
 
     .inspector-header {
-      padding: 16px 20px 14px;
-      border-bottom: 1px solid var(--border);
-      background: rgba(255, 255, 255, 0.72);
-      backdrop-filter: blur(22px) saturate(1.45);
-      -webkit-backdrop-filter: blur(22px) saturate(1.45);
+      padding: 18px 18px 13px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(6, 10, 18, 0.94);
     }
 
     .inspector-title {
@@ -393,9 +658,9 @@ function css(): string {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      color: #0f172a;
-      font-size: 15px;
-      line-height: 1.35;
+      color: var(--text);
+      font-size: 18px;
+      line-height: 1.2;
     }
 
     .inspector-subtitle {
@@ -405,81 +670,79 @@ function css(): string {
       margin-top: 8px;
       overflow: visible;
       white-space: normal;
-      color: #64748b;
-      font-size: 12px;
-      font-weight: 700;
-    }
-
-    .inspector-chip {
-      min-width: 0;
-      max-width: 100%;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      border: 1px solid rgba(148, 163, 184, 0.28);
-      border-radius: 999px;
-      padding: 4px 8px;
-      background: rgba(255, 255, 255, 0.62);
-      color: #64748b;
-      font-size: 12px;
-      font-weight: 700;
     }
 
     .tabs {
-      display: flex;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       position: sticky;
       top: 0;
       z-index: 1;
-      border-bottom: 1px solid var(--border);
-      background: rgba(255, 255, 255, 0.68);
-      backdrop-filter: blur(20px) saturate(1.45);
-      -webkit-backdrop-filter: blur(20px) saturate(1.45);
+      border-bottom: 1px solid var(--line);
+      background: rgba(5, 8, 14, 0.92);
+      backdrop-filter: blur(18px) saturate(1.25);
+      -webkit-backdrop-filter: blur(18px) saturate(1.25);
     }
 
     .tab {
-      flex: 1 1 0;
       min-width: 0;
       border: 0;
       background: transparent;
-      padding: 12px 4px;
-      color: #64748b;
+      min-height: 42px;
+      padding: 0 4px;
+      color: var(--muted);
       cursor: pointer;
-      font-size: 12px;
-      font-weight: 800;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 950;
+      letter-spacing: 0.1em;
       line-height: 1;
+      text-transform: uppercase;
     }
 
     .tab.active {
-      color: #0f172a;
-      box-shadow: inset 0 -3px 0 var(--accent);
+      color: var(--signal);
+      box-shadow: inset 0 -2px 0 var(--signal), 0 7px 18px rgba(var(--signal-rgb), 0.1);
     }
 
     .tab-content {
-      padding: 18px 20px 28px;
+      display: grid;
+      gap: 12px;
+      padding: 14px 16px 22px;
       font-size: 13px;
       line-height: 1.6;
     }
 
     .section {
-      padding: 16px;
-      margin: 0 0 14px;
-      border: 1px solid rgba(148, 163, 184, 0.22);
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.78);
-      box-shadow: 0 1px 0 var(--hairline), 0 14px 34px rgba(15, 23, 42, 0.05);
-    }
-
-    .section:last-child {
-      margin-bottom: 0;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent),
+        rgba(10, 17, 28, 0.76);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
     }
 
     .section h3 {
-      margin: 0 0 10px;
-      color: #334155;
-      font-size: 12px;
-      font-weight: 900;
-      letter-spacing: 0.04em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 12px;
+      color: #aebdd4;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 950;
+      letter-spacing: 0.12em;
       text-transform: uppercase;
+    }
+
+    .section h3::before {
+      content: "";
+      width: 5px;
+      height: 5px;
+      border-radius: 999px;
+      background: var(--signal);
+      box-shadow: 0 0 10px var(--signal);
     }
 
     details.section {
@@ -493,11 +756,12 @@ function css(): string {
       justify-content: space-between;
       gap: 12px;
       padding: 14px 16px;
-      color: #334155;
+      color: #aebdd4;
       cursor: pointer;
+      font-family: var(--font-mono);
       font-size: 12px;
-      font-weight: 900;
-      letter-spacing: 0.04em;
+      font-weight: 950;
+      letter-spacing: 0.1em;
       list-style: none;
       text-transform: uppercase;
     }
@@ -513,11 +777,11 @@ function css(): string {
     details.section > summary::after {
       content: "Expand";
       flex: 0 0 auto;
-      border: 1px solid #dbe3ee;
+      border: 1px solid rgba(var(--signal-rgb), 0.22);
       border-radius: 999px;
       padding: 3px 8px;
-      background: rgba(255, 255, 255, 0.72);
-      color: #64748b;
+      background: rgba(var(--signal-rgb), 0.06);
+      color: var(--signal);
       font-size: 10px;
       font-weight: 900;
       letter-spacing: 0.02em;
@@ -533,20 +797,27 @@ function css(): string {
 
     .kv {
       display: grid;
-      grid-template-columns: 118px minmax(0, 1fr);
+      grid-template-columns: 108px minmax(0, 1fr);
       gap: 8px;
       margin: 6px 0;
     }
 
     .kv-label {
-      color: #64748b;
-      font-weight: 800;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 950;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
     }
 
     .kv-value {
       min-width: 0;
       overflow-wrap: anywhere;
-      color: #0f172a;
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 800;
     }
 
     .field {
@@ -559,10 +830,11 @@ function css(): string {
 
     .field-label {
       margin: 0 0 5px;
-      color: #64748b;
-      font-size: 11px;
-      font-weight: 900;
-      letter-spacing: 0.06em;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 950;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
     }
 
@@ -570,30 +842,30 @@ function css(): string {
     .message-content {
       white-space: pre-wrap;
       overflow-wrap: break-word;
-      color: #1e293b;
+      color: #cbd8e8;
       font-size: 13px;
       line-height: 1.62;
     }
 
     .text-block {
-      border-left: 3px solid rgba(148, 163, 184, 0.4);
+      border-left: 3px solid rgba(119, 149, 190, 0.35);
       padding: 1px 0 1px 12px;
     }
 
     .summary-block {
-      border-left-color: var(--accent);
-      color: #0f172a;
+      border-left-color: var(--signal);
+      color: #dce8f6;
       font-size: 13.5px;
     }
 
     .message,
     .alt-card {
-      border: 1px solid rgba(148, 163, 184, 0.2);
-      border-radius: 8px;
+      border: 1px solid rgba(119, 149, 190, 0.15);
+      border-radius: var(--radius-sm);
       padding: 12px;
       margin: 10px 0;
-      background: rgba(255, 255, 255, 0.78);
-      box-shadow: 0 1px 0 var(--hairline);
+      background: rgba(7, 13, 22, 0.72);
+      transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
     }
 
     .message {
@@ -607,7 +879,14 @@ function css(): string {
       inset: 0 auto 0 0;
       width: 3px;
       background: var(--agent);
-      opacity: 0.62;
+      opacity: 0.8;
+    }
+
+    .message:hover,
+    .alt-card:hover {
+      transform: translateX(2px);
+      border-color: rgba(var(--signal-rgb), 0.32);
+      background: rgba(var(--signal-rgb), 0.055);
     }
 
     .message-meta {
@@ -616,7 +895,7 @@ function css(): string {
       justify-content: space-between;
       gap: 8px;
       margin-bottom: 8px;
-      color: #475569;
+      color: #aebdd4;
       font-size: 11px;
       font-weight: 900;
     }
@@ -629,30 +908,34 @@ function css(): string {
       border-radius: 999px;
       padding: 4px 8px;
       background: var(--agent-soft);
-      color: #3730a3;
+      color: var(--branch);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 950;
       text-transform: capitalize;
     }
 
-    .role-product-manager { background: rgba(0, 122, 255, 0.11); color: #0057c2; }
-    .role-business-analyst { background: rgba(52, 199, 89, 0.13); color: #176b33; }
-    .role-tech-lead { background: rgba(94, 92, 230, 0.12); color: #3730a3; }
-    .role-developer { background: rgba(255, 149, 0, 0.14); color: #8a4b00; }
-    .role-code-reviewer { background: rgba(255, 45, 85, 0.1); color: #9f1239; }
-    .role-qa { background: rgba(90, 200, 250, 0.16); color: #075985; }
+    .role-product-manager { background: rgba(0, 245, 212, 0.11); color: var(--signal); }
+    .role-business-analyst { background: rgba(73, 169, 255, 0.13); color: var(--blue); }
+    .role-tech-lead { background: rgba(169, 112, 255, 0.16); color: var(--branch); }
+    .role-developer { background: rgba(0, 215, 167, 0.13); color: var(--success); }
+    .role-code-reviewer { background: rgba(255, 77, 115, 0.14); color: var(--failed); }
+    .role-qa-engineer,
+    .role-qa { background: rgba(242, 201, 76, 0.14); color: var(--paused); }
 
     .timestamp {
       flex: 0 0 auto;
-      color: #94a3b8;
+      color: var(--muted);
       font-weight: 800;
     }
 
     .alt-card {
-      background: rgba(248, 250, 252, 0.78);
+      background: rgba(7, 13, 22, 0.72);
     }
 
     .alt-title {
       margin: 0 0 8px;
-      color: #0f172a;
+      color: var(--text);
       font-size: 13px;
       line-height: 1.35;
     }
@@ -666,20 +949,21 @@ function css(): string {
 
     .mini-metric {
       min-width: 0;
-      border: 1px solid rgba(148, 163, 184, 0.2);
-      border-radius: 8px;
+      border: 1px solid rgba(119, 149, 190, 0.15);
+      border-radius: var(--radius-sm);
       padding: 8px;
-      background: rgba(255, 255, 255, 0.7);
+      background: rgba(255, 255, 255, 0.035);
     }
 
     .mini-metric-label {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      color: #64748b;
+      color: var(--muted);
+      font-family: var(--font-mono);
       font-size: 10px;
-      font-weight: 900;
-      letter-spacing: 0.05em;
+      font-weight: 950;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
     }
 
@@ -688,14 +972,14 @@ function css(): string {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      color: #0f172a;
+      color: var(--text);
       font-size: 13px;
       font-weight: 900;
     }
 
     .empty {
       padding: 24px;
-      color: #64748b;
+      color: var(--muted);
       font-size: 13px;
       line-height: 1.45;
     }
@@ -706,7 +990,7 @@ function css(): string {
       display: grid;
       place-items: center;
       padding: 28px;
-      color: #64748b;
+      color: var(--muted);
       text-align: center;
       pointer-events: none;
     }
@@ -714,7 +998,7 @@ function css(): string {
     .canvas-empty strong {
       display: block;
       margin-bottom: 4px;
-      color: #334155;
+      color: var(--text);
       font-size: 14px;
     }
 
@@ -726,8 +1010,51 @@ function css(): string {
     .list li {
       margin: 6px 0;
       overflow-wrap: break-word;
-      color: #1e293b;
+      color: #cbd8e8;
       line-height: 1.55;
+    }
+
+    .score-row {
+      display: grid;
+      grid-template-columns: 112px minmax(70px, 1fr) 44px;
+      align-items: center;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .score-row span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 950;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .score-row div {
+      height: 4px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(119, 149, 190, 0.17);
+    }
+
+    .score-fill {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--signal), var(--score));
+      box-shadow: 0 0 12px rgba(76, 141, 255, 0.45);
+    }
+
+    .score-row strong {
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 950;
+      text-align: right;
     }
 
     pre {
@@ -735,12 +1062,110 @@ function css(): string {
       overflow-wrap: anywhere;
       max-height: min(52vh, 520px);
       overflow: auto;
-      background: #0f172a;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
+      background: rgba(2, 5, 10, 0.78);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
       padding: 12px;
-      color: #e2e8f0;
-      font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      color: #e2edf7;
+      font: 12px/1.55 var(--font-mono);
+    }
+
+    @keyframes branchFlow {
+      to {
+        stroke-dashoffset: -36;
+      }
+    }
+
+    @media (max-width: 1180px) {
+      .app-shell {
+        height: auto;
+        min-height: 100vh;
+        overflow: visible;
+      }
+
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+      }
+
+      .main {
+        grid-template-columns: 280px minmax(0, 1fr);
+        grid-template-rows: minmax(620px, calc(100vh - 58px)) auto;
+      }
+
+      .canvas {
+        min-height: 620px;
+      }
+
+      .inspector {
+        grid-column: 1 / -1;
+        border-left: 0;
+        border-top: 1px solid var(--line);
+      }
+    }
+
+    @media (max-width: 760px) {
+      .topbar {
+        grid-template-columns: 1fr;
+        align-items: start;
+        gap: 10px;
+        min-height: 86px;
+        padding: 12px 14px;
+      }
+
+      .topbar-meta {
+        justify-content: flex-start;
+      }
+
+      .main {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto minmax(520px, 62vh) auto;
+      }
+
+      .runs {
+        max-height: 250px;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .canvas-toolbar {
+        position: relative;
+        inset: auto;
+        padding: 12px;
+      }
+
+      .canvas-footer {
+        position: relative;
+        left: auto;
+        bottom: auto;
+        margin: 0 12px 12px;
+      }
+
+      .kv {
+        grid-template-columns: 1fr;
+        gap: 3px;
+      }
+
+      .mini-metrics,
+      .score-row {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+      }
+
+      .edge {
+        stroke-dasharray: none;
+      }
     }
   `;
 }
@@ -756,11 +1181,12 @@ function clientScript(): string {
   var MARGIN = 60;
   var SVG_NS = "http://www.w3.org/2000/svg";
   var PHASE_COLORS = {
-    requirements: "#007aff",
-    architecture: "#5e5ce6",
-    implementation: "#34c759",
-    validation: "#ff9500"
+    requirements: "#00f5d4",
+    architecture: "#a970ff",
+    implementation: "#00d7a7",
+    validation: "#f2c94c"
   };
+  var RUN_LIST_REFRESH_MS = 2500;
 
   var state = {
     runs: [],
@@ -776,7 +1202,12 @@ function clientScript(): string {
     loadingRuns: false,
     loadingRun: false,
     error: null,
-    drag: null
+    drag: null,
+    eventSource: null,
+    listRefreshTimer: null,
+    liveStatus: "idle",
+    reviewSubmitting: null,
+    reviewError: null
   };
 
   var app = document.getElementById("app");
@@ -787,8 +1218,8 @@ function clientScript(): string {
   app.innerHTML = [
     '<div class="app-shell">',
       '<header class="topbar">',
-        '<div class="brand"><span class="brand-mark">CTO</span><span>Cambrian Tree Orchestrator</span></div>',
-        '<div class="topbar-meta"><span id="topbarStatus" class="status-pill">Loading saved runs</span><span id="topbarDetail"></span></div>',
+        '<div class="brand"><span class="brand-mark">CTO</span><span class="brand-copy"><strong>Cambrian Tree Orchestrator</strong><span>Live run monitor</span></span></div>',
+        '<div class="topbar-meta"><span id="topbarDetail" class="topbar-detail"></span><span id="topbarStatus" class="status-pill status-running">Loading saved runs</span></div>',
       '</header>',
       '<main class="main">',
         '<aside class="runs">',
@@ -809,6 +1240,7 @@ function clientScript(): string {
           '</div>',
           '<svg id="treeSvg" class="tree-svg" role="img" aria-label="Saved run tree"></svg>',
           '<div id="canvasEmpty" class="canvas-empty" hidden></div>',
+          '<div id="canvasFooter" class="canvas-footer" hidden></div>',
         '</section>',
         '<aside class="inspector">',
           '<div id="inspectorHeader" class="inspector-header"></div>',
@@ -832,6 +1264,7 @@ function clientScript(): string {
     canvas: document.getElementById("canvas"),
     svg: document.getElementById("treeSvg"),
     canvasEmpty: document.getElementById("canvasEmpty"),
+    canvasFooter: document.getElementById("canvasFooter"),
     inspectorHeader: document.getElementById("inspectorHeader"),
     tabContent: document.getElementById("tabContent"),
     showPrunedButton: document.getElementById("showPrunedButton"),
@@ -843,6 +1276,9 @@ function clientScript(): string {
 
   bindEvents();
   loadRuns();
+  state.listRefreshTimer = window.setInterval(function () {
+    loadRuns({ silent: true });
+  }, RUN_LIST_REFRESH_MS);
 
   function bindEvents() {
     refs.fitButton.addEventListener("click", function () { fitCanvas(); });
@@ -873,12 +1309,23 @@ function clientScript(): string {
         fitCanvas();
       }
     });
+    window.addEventListener("beforeunload", function () {
+      closeRunEvents();
+      if (state.listRefreshTimer) {
+        window.clearInterval(state.listRefreshTimer);
+      }
+    });
   }
 
-  async function loadRuns() {
-    state.loadingRuns = true;
+  async function loadRuns(options) {
+    var silent = options && options.silent;
+    if (!silent) {
+      state.loadingRuns = true;
+    }
     state.error = null;
-    renderStatus();
+    if (!silent) {
+      renderStatus();
+    }
 
     try {
       var runs = await fetchJson("/api/runs");
@@ -890,13 +1337,20 @@ function clientScript(): string {
         state.run = null;
         state.selectedRunId = null;
         state.selectedNodeId = null;
+        closeRunEvents();
         renderAll();
         return;
       }
 
       var initialRunId = window.__CTO_INITIAL_RUN_ID__ || null;
-      var selected = initialRunId || state.runs[0].id;
-      selectRun(selected);
+      var selected = state.selectedRunId || initialRunId || state.runs[0].id;
+      if (!state.selectedRunId) {
+        selectRun(selected);
+      } else if (!state.runs.some(function (run) { return run.id === state.selectedRunId; })) {
+        selectRun(selected);
+      } else {
+        renderStatus();
+      }
     } catch (error) {
       state.loadingRuns = false;
       state.error = readableError(error);
@@ -914,6 +1368,9 @@ function clientScript(): string {
     state.error = null;
     state.viewBox = null;
     state.fitPending = true;
+    state.reviewSubmitting = null;
+    state.reviewError = null;
+    closeRunEvents();
     renderRunList();
     renderStatus();
 
@@ -927,6 +1384,7 @@ function clientScript(): string {
       state.run = run;
       state.selectedNodeId = run && run.root ? run.root.id : null;
       state.loadingRun = false;
+      openRunEvents(runId);
       renderAll();
     } catch (error) {
       if (token !== state.requestToken) {
@@ -937,12 +1395,82 @@ function clientScript(): string {
       state.selectedNodeId = null;
       state.loadingRun = false;
       state.error = readableError(error);
+      closeRunEvents();
       renderAll();
     }
   }
 
-  async function fetchJson(url) {
-    var response = await fetch(url, { headers: { Accept: "application/json" } });
+  function openRunEvents(runId) {
+    if (!window.EventSource) {
+      state.liveStatus = "polling";
+      return;
+    }
+
+    closeRunEvents();
+    state.liveStatus = "connecting";
+    var source = new EventSource("/api/runs/" + encodeURIComponent(runId) + "/events");
+    state.eventSource = source;
+
+    source.addEventListener("open", function () {
+      state.liveStatus = "live";
+      renderStatus();
+    });
+
+    source.addEventListener("snapshot", function (event) {
+      if (runId !== state.selectedRunId) {
+        return;
+      }
+      try {
+        applyRunSnapshot(JSON.parse(event.data));
+      } catch (error) {
+        state.liveStatus = "error";
+        state.error = readableError(error);
+        renderAll();
+      }
+    });
+
+    source.addEventListener("error", function () {
+      if (state.eventSource === source) {
+        state.liveStatus = "reconnecting";
+        renderStatus();
+      }
+    });
+  }
+
+  function closeRunEvents() {
+    if (state.eventSource) {
+      state.eventSource.close();
+      state.eventSource = null;
+    }
+    state.liveStatus = "idle";
+  }
+
+  function applyRunSnapshot(run) {
+    if (!run || run.id !== state.selectedRunId) {
+      return;
+    }
+
+    var previousCount = state.run && state.run.root ? countAllNodes(state.run.root) : 0;
+    var nextCount = run.root ? countAllNodes(run.root) : 0;
+    state.run = run;
+    state.loadingRun = false;
+    state.liveStatus = "live";
+    if (!run.pendingHumanReview || state.reviewSubmitting !== run.pendingHumanReview.requestId) {
+      state.reviewSubmitting = null;
+    }
+    if (state.selectedNodeId && !findNode(run.root, state.selectedNodeId, true)) {
+      state.selectedNodeId = run.root ? run.root.id : null;
+    }
+    if (nextCount !== previousCount) {
+      state.fitPending = true;
+    }
+    renderAll();
+  }
+
+  async function fetchJson(url, options) {
+    var requestOptions = options || {};
+    var headers = Object.assign({ Accept: "application/json" }, requestOptions.headers || {});
+    var response = await fetch(url, Object.assign({}, requestOptions, { headers: headers }));
     var body = await response.json().catch(function () { return null; });
 
     if (!response.ok) {
@@ -961,36 +1489,43 @@ function clientScript(): string {
 
   function renderStatus() {
     if (state.error) {
-      setText(refs.topbarStatus, "Error");
+      setStatusPill(refs.topbarStatus, "Error");
       setText(refs.topbarDetail, state.error);
       return;
     }
 
     if (state.loadingRuns) {
-      setText(refs.topbarStatus, "Loading saved runs");
+      setStatusPill(refs.topbarStatus, "Loading saved runs");
       setText(refs.topbarDetail, "");
       return;
     }
 
     if (state.loadingRun) {
-      setText(refs.topbarStatus, "Loading run");
+      setStatusPill(refs.topbarStatus, "Loading run");
       setText(refs.topbarDetail, state.selectedRunId || "");
       return;
     }
 
     if (!state.runs.length) {
-      setText(refs.topbarStatus, "No saved runs");
+      setStatusPill(refs.topbarStatus, "No saved runs");
       setText(refs.topbarDetail, "");
       return;
     }
 
     if (state.run) {
-      setText(refs.topbarStatus, state.run.status || "loaded");
+      var label = state.run.pendingHumanReview
+        ? "pending review"
+        : state.liveStatus === "reconnecting"
+          ? "reconnecting"
+          : state.liveStatus === "connecting"
+            ? "connecting"
+            : state.run.status || "loaded";
+      setStatusPill(refs.topbarStatus, label);
       setText(refs.topbarDetail, state.run.intent || state.run.id || "");
       return;
     }
 
-    setText(refs.topbarStatus, String(state.runs.length) + " saved runs");
+    setStatusPill(refs.topbarStatus, String(state.runs.length) + " saved runs");
     setText(refs.topbarDetail, "");
   }
 
@@ -1029,6 +1564,9 @@ function clientScript(): string {
       meta.className = "run-meta";
       appendChip(meta, run.status || "unknown");
       appendChip(meta, String(run.leafCount || 0) + " leaves");
+      if (run.codexUsageTotal) {
+        appendChip(meta, "Codex " + formatCodexTokens(run.codexUsageTotal));
+      }
       if (typeof run.bestScore === "number") {
         appendChip(meta, "best " + formatScore(run.bestScore));
       }
@@ -1041,6 +1579,8 @@ function clientScript(): string {
 
   function renderCanvas() {
     clear(refs.svg);
+    clear(refs.canvasFooter);
+    refs.canvasFooter.hidden = true;
     updatePrunedToggle();
 
     if (state.error) {
@@ -1063,12 +1603,14 @@ function clientScript(): string {
 
     hideCanvasEmpty();
     state.layout = layoutTree(state.run.root, state.showPruned);
+    renderCanvasFooter();
 
     if (state.layout.nodes.length === 0) {
       showCanvasEmpty("No visible nodes", "Enable Show pruned to view pruned branches.");
       return;
     }
 
+    refs.svg.appendChild(renderSvgDefs());
     var edgeLayer = svgEl("g");
     var nodeLayer = svgEl("g");
     refs.svg.appendChild(edgeLayer);
@@ -1077,7 +1619,8 @@ function clientScript(): string {
     state.layout.edges.forEach(function (edge) {
       var path = svgEl("path");
       var midX = edge.x1 + (edge.x2 - edge.x1) / 2;
-      path.setAttribute("class", "edge");
+      var child = findNode(state.run.root, edge.toId, true);
+      path.setAttribute("class", edgeClassName(child));
       path.setAttribute("d", "M " + edge.x1 + " " + edge.y1 + " C " + midX + " " + edge.y1 + " " + midX + " " + edge.y2 + " " + edge.x2 + " " + edge.y2);
       edgeLayer.appendChild(path);
     });
@@ -1098,7 +1641,7 @@ function clientScript(): string {
 
   function renderSvgNode(layoutNode, node) {
     var group = svgEl("g");
-    group.setAttribute("class", "node-card");
+    group.setAttribute("class", nodeClassName(node));
     group.setAttribute("transform", "translate(" + layoutNode.x + " " + layoutNode.y + ")");
     group.setAttribute("tabindex", "0");
     group.setAttribute("role", "button");
@@ -1174,6 +1717,57 @@ function clientScript(): string {
     return group;
   }
 
+  function renderSvgDefs() {
+    var defs = svgEl("defs");
+    var gradient = svgEl("linearGradient");
+    gradient.setAttribute("id", "branchGradient");
+    gradient.setAttribute("x1", "0");
+    gradient.setAttribute("x2", "1");
+    gradient.setAttribute("y1", "0");
+    gradient.setAttribute("y2", "0");
+
+    var stops = [
+      ["0%", "#00f5d4"],
+      ["55%", "#49a9ff"],
+      ["100%", "#a970ff"]
+    ];
+    stops.forEach(function (item) {
+      var stop = svgEl("stop");
+      stop.setAttribute("offset", item[0]);
+      stop.setAttribute("stop-color", item[1]);
+      gradient.appendChild(stop);
+    });
+
+    defs.appendChild(gradient);
+    return defs;
+  }
+
+  function renderCanvasFooter() {
+    if (!state.layout || !state.run) {
+      return;
+    }
+
+    refs.canvasFooter.hidden = false;
+    appendFooterItem("Nodes " + formatNumber(state.layout.nodes.length));
+    appendFooterItem("Depth " + formatNumber(maxVisibleDepth()));
+    appendFooterItem("Leaves " + formatNumber(countVisibleLeaves(state.run.root)));
+    var codexUsage = runCodexUsageTotal(state.run);
+    if (codexUsage) {
+      appendFooterItem("Codex " + formatCodexTokens(codexUsage));
+    }
+    if (typeof bestScore(state.run.root) === "number") {
+      var score = document.createElement("strong");
+      score.textContent = "Best " + formatScore(bestScore(state.run.root));
+      refs.canvasFooter.appendChild(score);
+    }
+  }
+
+  function appendFooterItem(text) {
+    var item = document.createElement("span");
+    item.textContent = text;
+    refs.canvasFooter.appendChild(item);
+  }
+
   function renderInspector() {
     updateTabs();
     clear(refs.inspectorHeader);
@@ -1225,7 +1819,7 @@ function clientScript(): string {
     detail.className = "inspector-subtitle";
     (Array.isArray(subtitle) ? subtitle : [subtitle]).forEach(function (item) {
       var chip = document.createElement("span");
-      chip.className = "inspector-chip";
+      chip.className = "inspector-chip " + chipClassName(item);
       chip.textContent = item;
       detail.appendChild(chip);
     });
@@ -1248,6 +1842,117 @@ function clientScript(): string {
     var ancestorSection = section("Ancestor Summaries");
     appendListOrEmpty(ancestorSection, node.context && node.context.ancestorSummaries, "No ancestor summaries recorded.");
     refs.tabContent.appendChild(ancestorSection);
+
+    if (isPendingReviewNode(node)) {
+      renderHumanReviewControls(node);
+    }
+
+    if (node.humanIntervention) {
+      var intervention = section("Human Intervention");
+      appendKeyValue(intervention, "Action", node.humanIntervention.action || "Not recorded");
+      appendKeyValue(intervention, "Created", formatDateTime(node.humanIntervention.createdAt));
+      if (node.humanIntervention.prompt) {
+        appendField(intervention, "Prompt", node.humanIntervention.prompt, "summary-block");
+      }
+      refs.tabContent.appendChild(intervention);
+    }
+
+    renderRunCodexUsage();
+  }
+
+  function renderHumanReviewControls(node) {
+    var pending = state.run && state.run.pendingHumanReview;
+    if (!pending || pending.nodeId !== node.id) {
+      return;
+    }
+
+    var review = section("Plan Review");
+    appendKeyValue(review, "Request", pending.requestId);
+    appendField(review, "Decision", "Choose whether this candidate should proceed to execution, be revised through another debate pass, or be killed.", "summary-block");
+
+    var textarea = document.createElement("textarea");
+    textarea.className = "review-textarea";
+    textarea.placeholder = "Revision prompt";
+    textarea.disabled = state.reviewSubmitting === pending.requestId;
+    review.appendChild(textarea);
+
+    var actions = document.createElement("div");
+    actions.className = "review-actions";
+    actions.appendChild(reviewButton("Proceed", "primary", function () {
+      submitHumanReviewDecision("proceed");
+    }));
+    actions.appendChild(reviewButton("Revise", "", function () {
+      submitHumanReviewDecision("revise", textarea.value);
+    }));
+    actions.appendChild(reviewButton("Kill", "danger", function () {
+      submitHumanReviewDecision("kill");
+    }));
+    review.appendChild(actions);
+
+    if (state.reviewSubmitting === pending.requestId) {
+      review.appendChild(emptyBlock("Decision submitted. Waiting for the orchestrator to apply it."));
+    }
+
+    if (state.reviewError) {
+      var error = document.createElement("div");
+      error.className = "review-error";
+      error.textContent = state.reviewError;
+      review.appendChild(error);
+    }
+
+    refs.tabContent.appendChild(review);
+  }
+
+  function reviewButton(label, className, onClick) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "review-button" + (className ? " " + className : "");
+    button.textContent = label;
+    button.disabled = Boolean(state.reviewSubmitting);
+    button.addEventListener("click", onClick);
+    return button;
+  }
+
+  async function submitHumanReviewDecision(action, prompt) {
+    var pending = state.run && state.run.pendingHumanReview;
+    if (!state.run || !pending) {
+      return;
+    }
+
+    var payload = { action: action };
+    if (action === "revise") {
+      var trimmed = String(prompt || "").trim();
+      if (!trimmed) {
+        state.reviewError = "Revision prompt cannot be empty.";
+        renderInspector();
+        return;
+      }
+      payload.prompt = trimmed;
+    }
+
+    state.reviewSubmitting = pending.requestId;
+    state.reviewError = null;
+    renderInspector();
+
+    try {
+      await fetchJson(
+        "/api/runs/" + encodeURIComponent(state.run.id) + "/human-review/" + encodeURIComponent(pending.requestId),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        }
+      );
+    } catch (error) {
+      state.reviewSubmitting = null;
+      state.reviewError = readableError(error);
+      renderInspector();
+    }
+  }
+
+  function isPendingReviewNode(node) {
+    var pending = state.run && state.run.pendingHumanReview;
+    return Boolean(pending && node && pending.nodeId === node.id);
   }
 
   function renderDebateTab(node) {
@@ -1378,6 +2083,7 @@ function clientScript(): string {
 
       if (node.executionResult.usage) {
         var usage = section("Codex Usage");
+        appendKeyValue(usage, "Total", formatCodexTokens(node.executionResult.usage));
         appendKeyValue(usage, "Input", formatNumber(node.executionResult.usage.inputTokens || 0));
         appendKeyValue(usage, "Cached", formatNumber(node.executionResult.usage.cachedInputTokens || 0));
         appendKeyValue(usage, "Output", formatNumber(node.executionResult.usage.outputTokens || 0));
@@ -1389,14 +2095,62 @@ function clientScript(): string {
     if (node.score) {
       var score = section("Judge Score");
       appendKeyValue(score, "Composite", formatScore(node.score.composite));
-      appendKeyValue(score, "Functional", formatScore(node.score.functionalCompleteness));
-      appendKeyValue(score, "Architecture", formatScore(node.score.architecturalQuality));
-      appendKeyValue(score, "Tests", formatScore(node.score.testCoverage));
-      appendKeyValue(score, "Intent", formatScore(node.score.intentAlignment));
-      appendKeyValue(score, "Simplicity", formatScore(node.score.simplicity));
+      appendScoreRow(score, "Functional", node.score.functionalCompleteness);
+      appendScoreRow(score, "Architecture", node.score.architecturalQuality);
+      appendScoreRow(score, "Tests", node.score.testCoverage);
+      appendScoreRow(score, "Intent", node.score.intentAlignment);
+      appendScoreRow(score, "Real-world", node.score.realWorldFit);
+      appendScoreRow(score, "Simplicity", node.score.simplicity);
       appendTextOrEmpty(score, node.score.rationale, "No rationale recorded.");
       refs.tabContent.appendChild(score);
     }
+  }
+
+  function renderRunCodexUsage() {
+    var total = runCodexUsageTotal(state.run);
+    var rows = leafCodexUsageRows(state.run && state.run.root);
+    if (!total && rows.length === 0) {
+      return;
+    }
+
+    var usage = section("Run Codex Usage");
+    if (total) {
+      var metrics = document.createElement("div");
+      metrics.className = "mini-metrics";
+      appendMiniMetric(metrics, "Total", formatCodexTokens(total));
+      appendMiniMetric(metrics, "Input", formatNumber(total.inputTokens || 0));
+      appendMiniMetric(metrics, "Cached", formatNumber(total.cachedInputTokens || 0));
+      appendMiniMetric(metrics, "Output", formatNumber(total.outputTokens || 0));
+      appendMiniMetric(metrics, "Reasoning", formatNumber(total.reasoningOutputTokens || 0));
+      usage.appendChild(metrics);
+    }
+
+    if (rows.length > 0) {
+      rows.forEach(function (row) {
+        var card = document.createElement("div");
+        card.className = "alt-card";
+
+        var title = document.createElement("h4");
+        title.className = "alt-title";
+        title.textContent = row.label || row.nodeId;
+        card.appendChild(title);
+
+        appendKeyValue(card, "Node", row.nodeId);
+
+        var rowMetrics = document.createElement("div");
+        rowMetrics.className = "mini-metrics";
+        appendMiniMetric(rowMetrics, "Total", formatCodexTokens(row));
+        appendMiniMetric(rowMetrics, "Input", formatNumber(row.inputTokens || 0));
+        appendMiniMetric(rowMetrics, "Cached", formatNumber(row.cachedInputTokens || 0));
+        appendMiniMetric(rowMetrics, "Output", formatNumber(row.outputTokens || 0));
+        appendMiniMetric(rowMetrics, "Reasoning", formatNumber(row.reasoningOutputTokens || 0));
+        card.appendChild(rowMetrics);
+
+        usage.appendChild(card);
+      });
+    }
+
+    refs.tabContent.appendChild(usage);
   }
 
   function layoutTree(root, showPruned) {
@@ -1428,6 +2182,7 @@ function clientScript(): string {
       var depth = typeof node.depth === "number" ? node.depth : fallbackDepth;
       var layoutNode = {
         id: node.id,
+        depth: depth,
         x: MARGIN + depth * (NODE_WIDTH + COLUMN_GAP),
         y: y,
         width: NODE_WIDTH,
@@ -1702,6 +2457,28 @@ function clientScript(): string {
     return alt;
   }
 
+  function appendScoreRow(parent, label, value) {
+    var row = document.createElement("div");
+    row.className = "score-row";
+
+    var name = document.createElement("span");
+    name.textContent = label;
+    row.appendChild(name);
+
+    var track = document.createElement("div");
+    var fill = document.createElement("b");
+    fill.className = "score-fill";
+    fill.style.width = scorePercent(value) + "%";
+    track.appendChild(fill);
+    row.appendChild(track);
+
+    var number = document.createElement("strong");
+    number.textContent = formatScore(value);
+    row.appendChild(number);
+
+    parent.appendChild(row);
+  }
+
   function appendMiniMetric(parent, label, value) {
     var metric = document.createElement("div");
     metric.className = "mini-metric";
@@ -1722,7 +2499,7 @@ function clientScript(): string {
 
   function appendChip(parent, text) {
     var chip = document.createElement("span");
-    chip.className = "meta-chip";
+    chip.className = "meta-chip " + chipClassName(text);
     chip.textContent = text;
     parent.appendChild(chip);
   }
@@ -1836,6 +2613,221 @@ function clientScript(): string {
     return PHASE_COLORS[phase] || "#64748b";
   }
 
+  function nodeClassName(node) {
+    var classes = [
+      "node-card",
+      "node-status-" + classToken(node.status || "pending"),
+      "node-phase-" + classToken(node.phase || "phase")
+    ];
+
+    if (isHumanRevision(node)) {
+      classes.push("node-human-revision");
+    }
+
+    return classes.join(" ");
+  }
+
+  function edgeClassName(node) {
+    var classes = ["edge"];
+    if (node && node.status) {
+      classes.push("edge-status-" + classToken(node.status));
+    }
+    if (node && isHumanRevision(node)) {
+      classes.push("edge-human-revision");
+    }
+    return classes.join(" ");
+  }
+
+  function isHumanRevision(node) {
+    return Boolean(
+      node &&
+      ((node.humanIntervention && node.humanIntervention.action === "revise") ||
+        (node.context && node.context.humanRevisionPrompt) ||
+        String(node.branchLabel || "").toLowerCase().includes("human-revision") ||
+        String(node.branchDescription || "").toLowerCase().includes("human revision"))
+    );
+  }
+
+  function setStatusPill(element, text) {
+    element.className = "status-pill " + statusClassName(text);
+    element.textContent = text;
+  }
+
+  function chipClassName(text) {
+    var value = String(text || "").toLowerCase();
+    if (value.includes("best") || /^\\d+(\\.\\d+)?$/.test(value)) {
+      return "score-chip";
+    }
+    if (isStatusValue(value)) {
+      return "status-chip " + statusClassName(value);
+    }
+    return "";
+  }
+
+  function statusClassName(text) {
+    var value = String(text || "").toLowerCase();
+    if (value.includes("error")) {
+      return "status-error";
+    }
+    if (value.includes("fail")) {
+      return "status-failed";
+    }
+    if (value.includes("pruned") || value.includes("kill")) {
+      return "status-pruned";
+    }
+    if (value.includes("paused") || value.includes("pending") || value.includes("no saved")) {
+      return "status-paused";
+    }
+    if (value.includes("loading") || value.includes("running") || value.includes("executing") || value.includes("debating") || value.includes("branched")) {
+      return "status-running";
+    }
+    if (value.includes("complete") || value.includes("score") || value.includes("consensus") || value.includes("loaded")) {
+      return "status-completed";
+    }
+    return "status-running";
+  }
+
+  function isStatusValue(value) {
+    return [
+      "completed",
+      "complete",
+      "running",
+      "failed",
+      "paused",
+      "pending",
+      "debating",
+      "branched",
+      "consensus",
+      "executing",
+      "scored",
+      "pruned"
+    ].some(function (status) {
+      return value.includes(status);
+    });
+  }
+
+  function maxVisibleDepth() {
+    if (!state.layout || !state.layout.nodes.length) {
+      return 0;
+    }
+    return state.layout.nodes.reduce(function (max, node) {
+      return Math.max(max, node.depth || 0);
+    }, 0);
+  }
+
+  function countVisibleLeaves(node) {
+    if (!node || (!state.showPruned && node.status === "pruned")) {
+      return 0;
+    }
+    var children = Array.isArray(node.children) ? node.children.filter(function (child) {
+      return state.showPruned || child.status !== "pruned";
+    }) : [];
+    if (children.length === 0) {
+      return 1;
+    }
+    return children.reduce(function (total, child) {
+      return total + countVisibleLeaves(child);
+    }, 0);
+  }
+
+  function countAllNodes(node) {
+    if (!node) {
+      return 0;
+    }
+    var children = Array.isArray(node.children) ? node.children : [];
+    return 1 + children.reduce(function (total, child) {
+      return total + countAllNodes(child);
+    }, 0);
+  }
+
+  function bestScore(node) {
+    if (!node || (!state.showPruned && node.status === "pruned")) {
+      return undefined;
+    }
+    var score = node.score && typeof node.score.composite === "number" ? node.score.composite : undefined;
+    var children = Array.isArray(node.children) ? node.children : [];
+    children.forEach(function (child) {
+      var childScore = bestScore(child);
+      if (typeof childScore === "number" && (typeof score !== "number" || childScore > score)) {
+        score = childScore;
+      }
+    });
+    return score;
+  }
+
+  function runCodexUsageTotal(run) {
+    if (!run || !run.root) {
+      return undefined;
+    }
+    if (run.codexUsageTotal) {
+      return normalizeCodexUsage(run.codexUsageTotal);
+    }
+    var rows = leafCodexUsageRows(run.root);
+    if (rows.length === 0) {
+      return undefined;
+    }
+    return sumCodexUsage(rows);
+  }
+
+  function leafCodexUsageRows(root) {
+    var rows = [];
+
+    function visit(node) {
+      if (!node) {
+        return;
+      }
+      var children = Array.isArray(node.children) ? node.children : [];
+      if (children.length === 0) {
+        var usage = node.executionResult && node.executionResult.usage;
+        if (usage) {
+          rows.push(Object.assign({
+            nodeId: node.id || "",
+            label: node.branchLabel || node.id || "leaf"
+          }, normalizeCodexUsage(usage)));
+        }
+        return;
+      }
+      children.forEach(visit);
+    }
+
+    visit(root);
+    return rows;
+  }
+
+  function sumCodexUsage(usages) {
+    return usages.reduce(function (total, usage) {
+      return {
+        inputTokens: total.inputTokens + (usage.inputTokens || 0),
+        cachedInputTokens: total.cachedInputTokens + (usage.cachedInputTokens || 0),
+        outputTokens: total.outputTokens + (usage.outputTokens || 0),
+        reasoningOutputTokens: total.reasoningOutputTokens + (usage.reasoningOutputTokens || 0)
+      };
+    }, normalizeCodexUsage());
+  }
+
+  function normalizeCodexUsage(usage) {
+    usage = usage || {};
+    return {
+      inputTokens: Number(usage.inputTokens) || 0,
+      cachedInputTokens: Number(usage.cachedInputTokens) || 0,
+      outputTokens: Number(usage.outputTokens) || 0,
+      reasoningOutputTokens: Number(usage.reasoningOutputTokens) || 0
+    };
+  }
+
+  function totalCodexTokens(usage) {
+    usage = normalizeCodexUsage(usage);
+    return usage.inputTokens + usage.outputTokens + usage.reasoningOutputTokens;
+  }
+
+  function scorePercent(value) {
+    if (typeof value !== "number" || Number.isNaN(value)) {
+      return 0;
+    }
+    var normalized = value <= 1 ? value * 100 : value <= 10 ? value * 10 : value;
+    return Math.max(0, Math.min(100, normalized));
+  }
+
   function svgEl(tagName) {
     return document.createElementNS(SVG_NS, tagName);
   }
@@ -1917,6 +2909,10 @@ function clientScript(): string {
       return "0";
     }
     return new Intl.NumberFormat().format(value);
+  }
+
+  function formatCodexTokens(usage) {
+    return formatNumber(totalCodexTokens(usage)) + " tok";
   }
 
   function round(value) {

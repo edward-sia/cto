@@ -117,6 +117,12 @@ export type HumanPlanDecision =
   | { action: "revise"; prompt: string }
   | { action: "kill" };
 
+export interface PendingHumanReview {
+  requestId: string;
+  nodeId: string;
+  createdAt: string;
+}
+
 export interface IntentDecomposition {
   loadBearingClaims: string[];
   undefinedTerms: Array<{ term: string; needsResolution: string }>;
@@ -231,6 +237,7 @@ export interface RunState {
   totalTokensUsed: number;
   llmUsage?: LLMUsage;
   codexUsageTotal?: CodexUsage;
+  pendingHumanReview?: PendingHumanReview;
   status: "running" | "completed" | "failed" | "paused";
   runMode?: "implementation" | "exploration";
   selectedAgents?: AgentRole[];

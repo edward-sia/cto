@@ -17,14 +17,16 @@ import OpenAI from "openai";
 import chalk from "chalk";
 import ora from "ora";
 import { createInterface } from "node:readline/promises";
+import { HumanReviewStore } from "../control/human-review-store.js";
 import { TreeOrchestrator, DEFAULT_RUN_CONFIG } from "../orchestrator/orchestrator.js";
 import { FileStore } from "../persistence/file-store.js";
 import type { HumanPlanDecision, RunState, TreeNode, RunConfig } from "../types/index.js";
 import { AGENT_DISPLAY_NAMES } from "../types/index.js";
-import { startUiServer } from "../ui/server.js";
+import { startUiServer, type StartedUiServer } from "../ui/server.js";
 import { estimateRunCost, formatCostEstimate, priceCodexUsage, priceLLMUsage } from "../utils/cost.js";
 import { loadGroundTruth } from "../ground-truth/provider.js";
 import type { DomainFacts } from "../ground-truth/types.js";
+import type { DebateProgressEvent } from "../debate/engine.js";
 
 const program = new Command();
 
@@ -52,24 +54,46 @@ program
   .option("--dry-run", "Skip all LLM and Codex calls — exercise tree shape only", false)
   .option("--ground-truth <spec>", "Inject verified domain facts (e.g. file:./facts.json, sample:./data.csv, openapi:./spec.yaml)")
   .option("--interactive-plan", "Review candidate leaves before implementation", false)
+  .option("--monitor", "Launch the live browser monitor while the run is active", false)
+  .option("--ui-review", "Use the browser UI for interactive plan decisions", false)
   .option("-y, --yes", "Skip pre-run cost confirmation", false)
   .action(async (intent: string, opts) => {
     const dryRun = Boolean(opts.dryRun);
     const openai = makeOpenAIClient(dryRun);
     const spinner = ora();
+    const useUiReview = Boolean(opts.uiReview);
+    const launchMonitor = Boolean(opts.monitor) || useUiReview;
+    const humanReviewStore = new HumanReviewStore();
+
+    const parsedDepth = parseInt(opts.depth, 10);
+    const parsedBranching = parseInt(opts.branching, 10);
+    const parsedRounds = parseInt(opts.rounds, 10);
+    const parsedLeafConcurrency = parseInt(opts.leafConcurrency, 10);
+    const parsedPruneThreshold = parseFloat(opts.pruneThreshold);
+
+    const numericErrors: string[] = [];
+    if (isNaN(parsedDepth)) numericErrors.push(`--depth: "${opts.depth}" is not a number (tip: use -d 2, not -d=2)`);
+    if (isNaN(parsedBranching)) numericErrors.push(`--branching: "${opts.branching}" is not a number (tip: use -b 2, not -b=2)`);
+    if (isNaN(parsedRounds)) numericErrors.push(`--rounds: "${opts.rounds}" is not a number`);
+    if (isNaN(parsedLeafConcurrency)) numericErrors.push(`--leaf-concurrency: "${opts.leafConcurrency}" is not a number`);
+    if (isNaN(parsedPruneThreshold)) numericErrors.push(`--prune-threshold: "${opts.pruneThreshold}" is not a number`);
+    if (numericErrors.length > 0) {
+      for (const err of numericErrors) console.error(chalk.red(`Error: ${err}`));
+      process.exit(1);
+    }
 
     const config: Partial<RunConfig> = {
-      maxDepth: parseInt(opts.depth, 10),
-      maxBranching: parseInt(opts.branching, 10),
-      maxDebateRounds: parseInt(opts.rounds, 10),
+      maxDepth: parsedDepth,
+      maxBranching: parsedBranching,
+      maxDebateRounds: parsedRounds,
       reasoningModel: opts.model,
       judgeModel: opts.model,
       workingDirectory: opts.workdir,
       tokenBudget: opts.tokenBudget ? parseInt(opts.tokenBudget, 10) : undefined,
       dryRun,
-      interactivePlan: Boolean(opts.interactivePlan),
-      leafConcurrency: parseInt(opts.leafConcurrency, 10),
-      pruneThreshold: parseFloat(opts.pruneThreshold),
+      interactivePlan: Boolean(opts.interactivePlan) || useUiReview,
+      leafConcurrency: parsedLeafConcurrency,
+      pruneThreshold: parsedPruneThreshold,
       cloudEnv: opts.cloudEnv,
       cloudAttempts: opts.cloudAttempts ? parseInt(opts.cloudAttempts, 10) : undefined,
     };
@@ -110,6 +134,8 @@ program
       }
     }
 
+    let monitorServer: StartedUiServer | undefined;
+
     const orchestrator = new TreeOrchestrator(
       openai,
       config,
@@ -125,26 +151,15 @@ program
           spinner.start("Building debate tree...");
         },
         onDebateProgress: (nodeId, event) => {
-          switch (event.type) {
-            case "round_start":
-              spinner.text = chalk.blue(`[${nodeId.slice(0, 12)}] Debate round ${event.round}/${event.totalRounds}`);
-              break;
-            case "agent_speaking":
-              spinner.text = chalk.cyan(`[${nodeId.slice(0, 12)}] ${AGENT_DISPLAY_NAMES[event.agent]} is speaking...`);
-              break;
-            case "agent_spoke":
-              console.log(chalk.dim(`  ${AGENT_DISPLAY_NAMES[event.agent]}: ${event.message.slice(0, 100)}...`));
-              break;
-            case "moderator_assessment": {
-              const icon = event.outcome.outcome === "consensus" ? "✅" : event.outcome.outcome === "diverging" ? "🔀" : "🔄";
-              console.log(chalk.yellow(`  ${icon} Moderator: ${event.outcome.outcome.toUpperCase()} — ${event.outcome.summary.slice(0, 100)}`));
-              break;
-            }
-            case "debate_complete":
-              spinner.succeed(chalk.green(`[${nodeId.slice(0, 12)}] Debate ${event.outcome === "consensus" ? "reached consensus" : "branching"}`));
-              spinner.start();
-              break;
-          }
+          printDebateProgress(nodeId, event, spinner);
+        },
+        onRunStarted: async (state) => {
+          if (!launchMonitor || monitorServer) return;
+          const restartSpinner = spinner.isSpinning;
+          if (restartSpinner) spinner.stop();
+          monitorServer = await startUiServer({ runId: state.id, openBrowser: true });
+          console.log(chalk.cyan(`Live monitor: ${monitorServer.url}`));
+          if (restartSpinner) spinner.start("Building debate tree...");
         },
         onNodeCreated: (node) => {
           console.log(chalk.magenta(`\n📌 New node: ${node.id.slice(0, 12)} (depth ${node.depth}) — ${node.branchLabel || "root"}`));
@@ -167,6 +182,9 @@ program
         onHumanPlanReview: async (node, state) => {
           spinner.stop();
           try {
+            if (useUiReview) {
+              return await reviewHumanPlanViaUi(node, state, humanReviewStore);
+            }
             return await reviewHumanPlan(node, state);
           } finally {
             spinner.start("Continuing orchestration...");
@@ -192,7 +210,7 @@ program
     console.log(chalk.dim(`Working dir: ${opts.workdir}`));
     if (opts.cloudEnv) console.log(chalk.cyan(`Codex Cloud: env=${opts.cloudEnv}, attempts=${opts.cloudAttempts ?? 1}`));
     if (dryRun) console.log(chalk.yellow("Mode: DRY RUN — no LLM or Codex calls will be made"));
-    if (opts.interactivePlan) console.log(chalk.yellow("Interactive plan gate: enabled"));
+    if (opts.interactivePlan || useUiReview) console.log(chalk.yellow(`Interactive plan gate: enabled${useUiReview ? " (browser review)" : ""}`));
     console.log();
 
     spinner.start("Initialising...");
@@ -202,7 +220,10 @@ program
     } catch (error) {
       spinner.fail(chalk.red("Run failed"));
       console.error(error);
+      if (monitorServer) await monitorServer.close().catch(() => {});
       process.exit(1);
+    } finally {
+      if (monitorServer) await monitorServer.close().catch(() => {});
     }
   });
 
@@ -240,6 +261,7 @@ program
       process.exit(1);
     }
     printResults(state);
+    printDiscussionTranscripts(state);
   });
 
 // ─── Tree ────────────────────────────────────────────────────────────────────
@@ -302,15 +324,32 @@ program
   .option("--dry-run", "Skip all LLM and Codex calls", false)
   .option("--leaf-concurrency <n>", "Override max parallel leaf executions on resume")
   .option("--interactive-plan", "Enable interactive plan review on resume")
+  .option("--monitor", "Launch the live browser monitor while the run resumes", false)
+  .option("--ui-review", "Use the browser UI for interactive plan decisions", false)
   .action(async (runId: string, opts) => {
     const dryRun = Boolean(opts.dryRun);
     const openai = makeOpenAIClient(dryRun);
+    const spinner = ora();
+    const useUiReview = Boolean(opts.uiReview);
+    const launchMonitor = Boolean(opts.monitor) || useUiReview;
+    const humanReviewStore = new HumanReviewStore();
+    const monitorServer = launchMonitor
+      ? await startUiServer({ runId, openBrowser: true })
+      : undefined;
+    if (monitorServer) {
+      console.log(chalk.cyan(`Live monitor: ${monitorServer.url}`));
+    }
     const orchestrator = new TreeOrchestrator(openai, {
       ...(dryRun ? { dryRun } : {}),
       ...(opts.leafConcurrency ? { leafConcurrency: parseInt(opts.leafConcurrency, 10) } : {}),
-      ...(opts.interactivePlan ? { interactivePlan: true } : {}),
+      ...(opts.interactivePlan || useUiReview ? { interactivePlan: true } : {}),
     }, {
-      onHumanPlanReview: reviewHumanPlan,
+      onDebateProgress: (nodeId, event) => {
+        printDebateProgress(nodeId, event, spinner);
+      },
+      onHumanPlanReview: (node, state) => useUiReview
+        ? reviewHumanPlanViaUi(node, state, humanReviewStore)
+        : reviewHumanPlan(node, state),
       onHumanPlanApplied: (nodeId, decision) => {
         const label = decision.action === "revise" ? `revise: ${decision.prompt}` : decision.action;
         console.log(chalk.cyan(`\n🧭 [${nodeId.slice(0, 12)}] Human plan decision: ${label}`));
@@ -322,7 +361,10 @@ program
       printResults(state);
     } catch (error) {
       console.error(chalk.red("Resume failed:"), error);
+      if (monitorServer) await monitorServer.close().catch(() => {});
       process.exit(1);
+    } finally {
+      if (monitorServer) await monitorServer.close().catch(() => {});
     }
   });
 
@@ -337,6 +379,20 @@ async function confirm(question: string): Promise<boolean> {
   } finally {
     rl.close();
   }
+}
+
+async function reviewHumanPlanViaUi(
+  node: TreeNode,
+  state: RunState,
+  humanReviewStore: HumanReviewStore,
+): Promise<HumanPlanDecision> {
+  const pending = state.pendingHumanReview;
+  if (!pending || pending.nodeId !== node.id) {
+    throw new Error(`No pending browser review request for ${node.id}`);
+  }
+
+  console.log(chalk.cyan(`\n🧭 Waiting for browser review of ${node.id.slice(0, 12)}...`));
+  return humanReviewStore.waitForDecision(state.id, pending.requestId);
 }
 
 async function reviewHumanPlan(node: TreeNode, state: RunState): Promise<HumanPlanDecision> {
@@ -392,6 +448,68 @@ function makeOpenAIClient(dryRun: boolean): OpenAI {
   return new OpenAI();
 }
 
+function printDebateProgress(
+  nodeId: string,
+  event: DebateProgressEvent,
+  spinner?: ReturnType<typeof ora>
+): void {
+  switch (event.type) {
+    case "round_start":
+      if (spinner) {
+        spinner.text = chalk.blue(`[${nodeId.slice(0, 12)}] Debate round ${event.round}/${event.totalRounds}`);
+      }
+      break;
+    case "agent_speaking":
+      if (spinner) {
+        spinner.text = chalk.cyan(`[${nodeId.slice(0, 12)}] ${AGENT_DISPLAY_NAMES[event.agent]} is speaking...`);
+      }
+      break;
+    case "agent_spoke":
+      withPausedSpinner(spinner, () => {
+        console.log(chalk.bold.cyan(`\n── ${nodeId.slice(0, 12)} · Round ${event.round} · ${AGENT_DISPLAY_NAMES[event.agent]} ──`));
+        console.log(chalk.bold(`${AGENT_DISPLAY_NAMES[event.agent]}:`));
+        console.log(event.message);
+      });
+      break;
+    case "moderator_assessment":
+      withPausedSpinner(spinner, () => {
+        printModeratorAssessment(event);
+      });
+      break;
+    case "debate_complete":
+      if (spinner) {
+        spinner.succeed(chalk.green(`[${nodeId.slice(0, 12)}] Debate ${event.outcome === "consensus" ? "reached consensus" : "branching"}`));
+        spinner.start();
+      }
+      break;
+  }
+}
+
+function withPausedSpinner(spinner: ReturnType<typeof ora> | undefined, print: () => void): void {
+  const shouldRestart = Boolean(spinner?.isSpinning);
+  if (shouldRestart) spinner?.stop();
+  try {
+    print();
+  } finally {
+    if (shouldRestart) spinner?.start();
+  }
+}
+
+function printModeratorAssessment(
+  event: Extract<DebateProgressEvent, { type: "moderator_assessment" }>
+): void {
+  console.log(chalk.bold.yellow(`\n── Moderator · Round ${event.round} · ${event.outcome.outcome.toUpperCase()} ──`));
+  console.log(event.outcome.summary);
+  if (event.outcome.alternatives.length > 0) {
+    console.log(chalk.yellow("\nAlternatives:"));
+    for (const alt of event.outcome.alternatives) {
+      console.log(chalk.yellow(`- ${alt.label} (conf=${alt.confidence.toFixed(2)}, relevance=${alt.relevanceToIntent.toFixed(2)})`));
+      console.log(`  ${alt.description}`);
+      console.log(chalk.dim(`  Rationale: ${alt.rationale}`));
+    }
+  }
+}
+
 function printResults(state: RunState): void {
   console.log(chalk.bold.white("\n═══════════════════════════════════════"));
   console.log(chalk.bold.white("  🌳 ORCHESTRATION RESULTS"));
@@ -443,6 +561,44 @@ function printResults(state: RunState): void {
       console.log();
     }
   }
+}
+
+function printDiscussionTranscripts(state: RunState): void {
+  const nodes = collectDebatedNodes(state.root);
+  console.log(chalk.bold.white("\n═══════════════════════════════════════"));
+  console.log(chalk.bold.white("  💬 FULL DISCUSSIONS"));
+  console.log(chalk.bold.white("═══════════════════════════════════════\n"));
+
+  if (nodes.length === 0) {
+    console.log(chalk.dim("No debate transcripts recorded."));
+    return;
+  }
+
+  for (const node of nodes) {
+    const path = getPathLabelsForNode(state.root, node.id).join(" → ") || "(root)";
+    console.log(chalk.bold.cyan(`\nNode ${node.id.slice(0, 12)} — ${path}`));
+    console.log(chalk.dim(`Phase: ${node.phase} · Summary: ${node.debate?.summary ?? "No summary recorded."}`));
+
+    for (const round of node.debate?.rounds ?? []) {
+      console.log(chalk.bold(`\nRound ${round.roundNumber} — ${round.outcome.toUpperCase()}`));
+      for (const message of round.messages) {
+        console.log(chalk.bold(`\n${AGENT_DISPLAY_NAMES[message.role]}:`));
+        console.log(message.content);
+      }
+      if (round.alternatives.length > 0) {
+        console.log(chalk.bold("\nAlternatives:"));
+        for (const alt of round.alternatives) {
+          console.log(`- ${alt.label}: ${alt.description}`);
+          console.log(chalk.dim(`  Rationale: ${alt.rationale}`));
+        }
+      }
+    }
+  }
+}
+
+function collectDebatedNodes(node: TreeNode): TreeNode[] {
+  const current = node.debate ? [node] : [];
+  return [...current, ...node.children.flatMap((child) => collectDebatedNodes(child))];
 }
 
 function collectLeafOutputs(

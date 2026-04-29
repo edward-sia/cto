@@ -3,7 +3,8 @@
  * Saves to .cambrian-tree/<run-id>/state.json
  */
 
-import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, rename } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { RunState } from "../types/index.js";
 
@@ -22,7 +23,10 @@ export class FileStore {
   async save(state: RunState): Promise<void> {
     const dir = join(this.baseDir, state.id);
     await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, "state.json"), JSON.stringify(state, null, 2), "utf-8");
+    const finalPath = join(dir, "state.json");
+    const tempPath = join(dir, `state.${process.pid}.${randomUUID()}.tmp`);
+    await writeFile(tempPath, JSON.stringify(state, null, 2), "utf-8");
+    await rename(tempPath, finalPath);
   }
 
   async load(runId: string): Promise<RunState | null> {

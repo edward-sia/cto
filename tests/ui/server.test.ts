@@ -1,7 +1,8 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { HumanReviewStore } from "../../src/control/human-review-store.js";
 import type { RunState, TreeNode } from "../../src/types/index.js";
 import { startUiServer, type StartedUiServer } from "../../src/ui/server.js";
 
@@ -64,6 +65,61 @@ describe("startUiServer", () => {
       expect.objectContaining({ id: "run-legacy" }),
     ]);
   });
+
+  it("streams the selected run over server-sent events", async () => {
+    const cwd = await createTempCwd();
+    const runDir = join(cwd, ".cambrian-tree", "run-live");
+    await mkdir(runDir, { recursive: true });
+    await writeFile(join(runDir, "state.json"), JSON.stringify(run({ id: "run-live" })), "utf-8");
+
+    server = await startUiServer({ runId: "run-live", openBrowser: false, port: 43282 });
+
+    const response = await fetch(new URL("/api/runs/run-live/events", server.url));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+
+    const reader = response.body?.getReader();
+    expect(reader).toBeDefined();
+    const firstChunk = await reader!.read();
+    await reader!.cancel();
+
+    const text = new TextDecoder().decode(firstChunk.value);
+    expect(text).toContain("event: snapshot");
+    expect(text).toContain('"id":"run-live"');
+  });
+
+  it("stores a matching browser human-review decision without mutating run state", async () => {
+    const cwd = await createTempCwd();
+    const runDir = join(cwd, ".cambrian-tree", "run-live");
+    await mkdir(runDir, { recursive: true });
+    const state = run({
+      id: "run-live",
+      pendingHumanReview: {
+        requestId: "review-123",
+        nodeId: "node-root",
+        createdAt: "2026-04-28T01:05:00.000Z",
+      },
+    });
+    await writeFile(join(runDir, "state.json"), JSON.stringify(state), "utf-8");
+
+    server = await startUiServer({ runId: "run-live", openBrowser: false, port: 43283 });
+
+    const response = await fetch(new URL("/api/runs/run-live/human-review/review-123", server.url), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "kill" }),
+    });
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({ ok: true });
+
+    const decisionStore = new HumanReviewStore(join(cwd, ".cambrian-tree"));
+    await expect(decisionStore.readDecision("run-live", "review-123")).resolves.toEqual({ action: "kill" });
+
+    const savedState = JSON.parse(await readFile(join(runDir, "state.json"), "utf-8"));
+    expect(savedState.pendingHumanReview).toEqual(state.pendingHumanReview);
+  });
 });
 
 async function createTempCwd(): Promise<string> {
@@ -103,6 +159,7 @@ function run(overrides: Partial<RunState>): RunState {
     root: overrides.root ?? node({}),
     leafNodeIds: overrides.leafNodeIds ?? [],
     totalTokensUsed: overrides.totalTokensUsed ?? 0,
+    pendingHumanReview: overrides.pendingHumanReview,
     config:
       overrides.config ?? {
         maxDepth: 3,

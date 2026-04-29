@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { promisify } from "node:util";
+import { HumanReviewStore, parseHumanPlanDecision } from "../control/human-review-store.js";
 import { FileStore } from "../persistence/file-store.js";
 import { renderUiPage } from "./page.js";
 import { summarizeRun } from "./run-summary.js";
@@ -9,6 +10,9 @@ const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 43187;
 const PORT_ATTEMPTS = 20;
 const RUN_ID_PATTERN = /^run-[A-Za-z0-9_-]+$/;
+const REVIEW_REQUEST_ID_PATTERN = /^review-[A-Za-z0-9_-]+$/;
+const LIVE_POLL_MS = 750;
+const BODY_LIMIT_BYTES = 64 * 1024;
 
 const execFileAsync = promisify(execFile);
 
@@ -28,8 +32,9 @@ export async function startUiServer(options: UiServerOptions = {}): Promise<Star
   const host = options.host ?? DEFAULT_HOST;
   const preferredPort = options.port ?? DEFAULT_PORT;
   const store = new FileStore();
+  const humanReviewStore = new HumanReviewStore();
   const server = createServer((request, response) => {
-    void handleRequest(request, response, store, options.runId);
+    void handleRequest(request, response, store, humanReviewStore, options.runId);
   });
 
   const port = await listenOnAvailablePort(server, host, preferredPort);
@@ -49,15 +54,48 @@ async function handleRequest(
   request: IncomingMessage,
   response: ServerResponse,
   store: FileStore,
+  humanReviewStore: HumanReviewStore,
   initialRunId?: string,
 ): Promise<void> {
   try {
+    const url = new URL(request.url ?? "/", "http://localhost");
+
+    const eventRoute = matchRunEventRoute(url.pathname);
+    if (eventRoute.matched) {
+      if (request.method !== "GET") {
+        sendJson(response, 405, { error: "Method not allowed" }, { Allow: "GET" });
+        return;
+      }
+
+      if (!eventRoute.runId) {
+        sendJson(response, 404, { error: "Run not found" });
+        return;
+      }
+
+      await streamRunEvents(request, response, store, eventRoute.runId);
+      return;
+    }
+
+    const humanReviewRoute = matchHumanReviewRoute(url.pathname);
+    if (humanReviewRoute.matched) {
+      if (request.method !== "POST") {
+        sendJson(response, 405, { error: "Method not allowed" }, { Allow: "POST" });
+        return;
+      }
+
+      if (!humanReviewRoute.runId || !humanReviewRoute.requestId) {
+        sendJson(response, 404, { error: "Review request not found" });
+        return;
+      }
+
+      await handleHumanReviewDecision(request, response, store, humanReviewStore, humanReviewRoute.runId, humanReviewRoute.requestId);
+      return;
+    }
+
     if (request.method !== "GET") {
       sendJson(response, 405, { error: "Method not allowed" }, { Allow: "GET" });
       return;
     }
-
-    const url = new URL(request.url ?? "/", "http://localhost");
 
     if (url.pathname === "/") {
       sendHtml(response, renderUiPage({ initialRunId }));
@@ -103,7 +141,73 @@ async function handleRequest(
   }
 }
 
+async function streamRunEvents(
+  request: IncomingMessage,
+  response: ServerResponse,
+  store: FileStore,
+  runId: string,
+): Promise<void> {
+  const initial = await store.load(runId);
+  if (!initial) {
+    sendJson(response, 404, { error: "Run not found" });
+    return;
+  }
+
+  response.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-store",
+    Connection: "keep-alive",
+  });
+
+  let closed = false;
+  let lastPayload = "";
+  const sendSnapshot = async (): Promise<void> => {
+    if (closed) return;
+    const run = await store.load(runId);
+    if (!run) return;
+    const payload = JSON.stringify(run);
+    if (payload === lastPayload) return;
+    lastPayload = payload;
+    response.write(`event: snapshot\ndata: ${payload}\n\n`);
+  };
+
+  await sendSnapshot();
+  const timer = setInterval(() => {
+    void sendSnapshot().catch(() => {});
+  }, LIVE_POLL_MS);
+  timer.unref?.();
+
+  request.on("close", () => {
+    closed = true;
+    clearInterval(timer);
+  });
+}
+
+async function handleHumanReviewDecision(
+  request: IncomingMessage,
+  response: ServerResponse,
+  store: FileStore,
+  humanReviewStore: HumanReviewStore,
+  runId: string,
+  requestId: string,
+): Promise<void> {
+  const run = await store.load(runId);
+  if (!run || run.pendingHumanReview?.requestId !== requestId) {
+    sendJson(response, 404, { error: "Review request not found" });
+    return;
+  }
+
+  const body = await readJsonBody(request);
+  const decision = parseHumanPlanDecision(body);
+  await humanReviewStore.writeDecision(runId, requestId, decision);
+  sendJson(response, 202, { ok: true });
+}
+
 type RunRouteMatch = { matched: false } | { matched: true; runId: string | null };
+type RunEventRouteMatch = { matched: false } | { matched: true; runId: string | null };
+type HumanReviewRouteMatch =
+  | { matched: false }
+  | { matched: true; runId: string | null; requestId: string | null };
 
 function matchRunRoute(pathname: string): RunRouteMatch {
   const prefix = "/api/runs/";
@@ -124,6 +228,48 @@ function matchRunRoute(pathname: string): RunRouteMatch {
   }
 
   return RUN_ID_PATTERN.test(runId) ? { matched: true, runId } : { matched: true, runId: null };
+}
+
+function matchRunEventRoute(pathname: string): RunEventRouteMatch {
+  const prefix = "/api/runs/";
+  const suffix = "/events";
+  if (!pathname.startsWith(prefix) || !pathname.endsWith(suffix)) {
+    return { matched: false };
+  }
+
+  const encodedRunId = pathname.slice(prefix.length, -suffix.length);
+  const runId = decodeSafeSegment(encodedRunId);
+  return runId && RUN_ID_PATTERN.test(runId) ? { matched: true, runId } : { matched: true, runId: null };
+}
+
+function matchHumanReviewRoute(pathname: string): HumanReviewRouteMatch {
+  const prefix = "/api/runs/";
+  const marker = "/human-review/";
+  if (!pathname.startsWith(prefix) || !pathname.includes(marker)) {
+    return { matched: false };
+  }
+
+  const rest = pathname.slice(prefix.length);
+  const parts = rest.split(marker);
+  if (parts.length !== 2 || !parts[0] || !parts[1] || parts[1].includes("/")) {
+    return { matched: true, runId: null, requestId: null };
+  }
+
+  const runId = decodeSafeSegment(parts[0]);
+  const requestId = decodeSafeSegment(parts[1]);
+  const validRunId = runId && RUN_ID_PATTERN.test(runId) ? runId : null;
+  const validRequestId = requestId && REVIEW_REQUEST_ID_PATTERN.test(requestId) ? requestId : null;
+  return { matched: true, runId: validRunId, requestId: validRequestId };
+}
+
+function decodeSafeSegment(value: string): string | null {
+  if (!value || value.includes("/")) return null;
+  try {
+    const decoded = decodeURIComponent(value);
+    return decoded.includes("/") ? null : decoded;
+  } catch {
+    return null;
+  }
 }
 
 async function listenOnAvailablePort(server: Server, host: string, preferredPort: number): Promise<number> {
@@ -232,4 +378,31 @@ function sendJson(
     ...headers,
   });
   response.end(JSON.stringify(body));
+}
+
+function readJsonBody(request: IncomingMessage): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks: Buffer[] = [];
+
+    request.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > BODY_LIMIT_BYTES) {
+        reject(new Error("Request body is too large"));
+        request.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+
+    request.on("end", () => {
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString("utf-8")));
+      } catch {
+        reject(new Error("Request body must be valid JSON"));
+      }
+    });
+
+    request.on("error", reject);
+  });
 }

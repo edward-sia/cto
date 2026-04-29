@@ -62,13 +62,13 @@ cto run "Build X" -y
 cto run "Build X" --dry-run
 ```
 
-To inspect saved runs visually:
+To inspect saved or running runs visually:
 
 ```bash
 cto ui
 ```
 
-This launches a local saved-run explorer with a run picker, tree canvas, and node inspector.
+This launches a local run monitor with a run picker, tree canvas, and node inspector. It updates running runs in near real time from the saved `.cambrian-tree` state.
 
 ![Saved-run UI showing a branch tree and node inspector](docs/assets/cto-ui-saved-run.png)
 
@@ -94,12 +94,28 @@ Options:
                              (default: 1)
       --dry-run              No LLM or Codex calls — exercise tree shape only
       --interactive-plan     Review candidate leaves before implementation
+      --monitor              Open the live browser monitor for this run
+      --ui-review            Use the browser UI for interactive plan decisions
   -y, --yes                  Skip pre-run cost confirmation
 ```
 
 Each leaf runs in its own subdirectory: `<workdir>/<node-id>/`. Solutions are independent and can be diffed against each other.
 
 Use `--interactive-plan` when you want a human checkpoint before leaf execution. CTO will pause on each candidate leaf and let you proceed, revise once with a new prompt that creates a debated child branch, or kill the branch before Codex execution.
+
+Use `--monitor` to open the local browser monitor when the run starts:
+
+```bash
+cto run "Build X" --monitor
+```
+
+Use `--ui-review` to combine the interactive plan gate with browser-based decisions:
+
+```bash
+cto run "Build X" --ui-review
+```
+
+When a candidate leaf needs review, the selected node inspector shows Proceed, Revise, and Kill controls. Browser decisions are written as control files under `.cambrian-tree/<run-id>/control/`; the orchestrator remains the only writer of canonical `state.json`.
 
 Interactive plan decisions are saved in `.cambrian-tree/<run-id>/state.json`. Revised branches receive a `human-revision` child node, and the revision prompt is included in the next debate plus the final implementation or synthesis prompt. Descendants of a human revision are not prompted again in v1, which keeps the mode to one revision opportunity per original candidate leaf.
 
@@ -121,24 +137,25 @@ cto show run-abc123
 cto tree run-abc123
 ```
 
-### `ui [run-id]` — launch the saved-run browser UI
+### `ui [run-id]` — launch the live browser monitor
 
 ```
 cto ui [run-id] [--port 43187] [--no-open]
 ```
 
-The UI reads saved state from `.cambrian-tree`, serves a local browser app, and lets you inspect:
+The UI reads saved state from `.cambrian-tree`, serves a local browser app, streams selected run snapshots, and lets you inspect:
 
 - saved runs and run metadata
 - the full branch tree as an interactive canvas
 - node summaries, debate rounds, context updates, leaf execution output, changed files, tests, Codex usage, and judge scores
+- pending human plan reviews, with Proceed / Revise / Kill controls when the run is waiting for browser input
 
 If `run-id` is provided, the UI opens that run directly. Use `--no-open` to print the local URL without opening a browser.
 
 ### `resume <run-id>` — continue a paused or failed run
 
 ```
-cto resume run-abc123 [--dry-run] [--leaf-concurrency <n>] [--interactive-plan]
+cto resume run-abc123 [--dry-run] [--leaf-concurrency <n>] [--interactive-plan] [--monitor] [--ui-review]
 ```
 
 Press **Ctrl+C** at any time during a run to pause it — state is saved and you can resume later.
@@ -210,6 +227,8 @@ When interactive planning is enabled, `TreeNode.humanIntervention` records `proc
 - `GET /` — browser UI
 - `GET /api/runs` — saved run summaries
 - `GET /api/runs/:runId` — full `RunState`
+- `GET /api/runs/:runId/events` — server-sent events stream of live run snapshots
+- `POST /api/runs/:runId/human-review/:requestId` — browser decision for a pending plan review
 - `GET /api/health` — health check
 
 ## Project Status
@@ -221,7 +240,7 @@ When interactive planning is enabled, `TreeNode.humanIntervention` records `proc
 | Phase 3 — Agent quality | ✅ Complete |
 | Phase 4 — Optimise (v0.2) | ✅ Complete |
 | Interactive plan gate | ✅ Complete |
-| Saved-run UI | ✅ Complete |
+| Live run monitor | ✅ Complete |
 
 **Phase 2 delivered:** Zod validation on all LLM responses, exponential-backoff retry (3 attempts, 1s/2s/4s), token budget tracking with warnings, graceful Ctrl+C shutdown with state save.
 
@@ -231,6 +250,6 @@ When interactive planning is enabled, `TreeNode.humanIntervention` records `proc
 
 **Interactive plan gate delivered:** `--interactive-plan` pauses after debate traversal and before leaf execution. The human can proceed, revise once with a new prompt that creates a debated `human-revision` child, or kill a branch. Decisions persist into run state and resume without re-prompting already-reviewed leaves.
 
-**Saved-run UI delivered:** `cto ui` launches a dependency-light local browser explorer for saved `.cambrian-tree` runs. It includes a run picker, SVG tree canvas, node selection, inspector tabs for summary/debate/context/leaf details, local JSON API routes, and run-id validation before loading state.
+**Live run monitor delivered:** `cto ui` launches a dependency-light local browser monitor for saved and running `.cambrian-tree` runs. It includes a run picker, SVG tree canvas, node selection, inspector tabs for summary/debate/context/leaf details, server-sent event updates for the selected run, browser controls for pending interactive plan reviews, local JSON/control API routes, and run-id validation before loading state.
 
 See [CLAUDE.md](CLAUDE.md) for the full work plan and known issues.

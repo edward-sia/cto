@@ -84,6 +84,7 @@ export interface OrchestratorCallbacks {
   onPruned?: (parentId: string, prunedCount: number, threshold: number) => void;
   onLeafExecuting?: (nodeId: string) => void;
   onLeafScored?: (nodeId: string, score: JudgeScore) => void;
+  onRunStarted?: (state: RunState) => void | Promise<void>;
   onHumanPlanReview?: (node: TreeNode, state: RunState) => Promise<HumanPlanDecision>;
   onHumanPlanApplied?: (nodeId: string, decision: HumanPlanDecision) => void;
   onRunComplete?: (state: RunState) => void;
@@ -154,6 +155,7 @@ export class TreeOrchestrator {
     this.accumulateLLMUsage(this.decomposer.llmUsage);
 
     await this.store.save(this.runState);
+    await this.callbacks.onRunStarted?.(this.runState);
 
     let shuttingDown = false;
     const handleSigint = async () => {
@@ -243,7 +245,15 @@ export class TreeOrchestrator {
 
     for (const leaf of reviewLeaves) {
       if (leaf.status === "pruned" || leaf.humanIntervention) continue;
+      this.runState.pendingHumanReview = {
+        requestId: `review-${nanoid(10)}`,
+        nodeId: leaf.id,
+        createdAt: new Date().toISOString(),
+      };
+      await this.store.save(this.runState);
       const decision = await this.callbacks.onHumanPlanReview(leaf, this.runState);
+      delete this.runState.pendingHumanReview;
+      await this.store.save(this.runState);
       await this.applyHumanPlanDecision(leaf, decision);
       this.callbacks.onHumanPlanApplied?.(leaf.id, decision);
       this.runState.leafNodeIds = this.collectLeafIds(root);

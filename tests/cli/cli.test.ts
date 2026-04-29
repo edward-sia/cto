@@ -30,4 +30,74 @@ describe("CLI", () => {
     expect(output).toContain("Agents:    Product Manager, Tech Lead, Developer, QA Engineer");
     expect(output).toContain("Rationale: Default panel (dry-run or analyzer fallback)");
   });
+
+  it("prints full debate discussion text by default", () => {
+    const output = execFileSync(
+      "npx",
+      [
+        "tsx",
+        "src/cli/index.ts",
+        "run",
+        "Build a REST API",
+        "--dry-run",
+        "--depth",
+        "1",
+        "--rounds",
+        "1",
+        "--branching",
+        "2",
+      ],
+      {
+        cwd: process.cwd(),
+        encoding: "utf-8",
+        env: { ...process.env, FORCE_COLOR: "0" },
+        stdio: ["ignore", "pipe", "pipe"],
+      }
+    );
+
+    expect(output).toContain("Product Manager:");
+    expect(output).toContain("Better fit if requirements expand later.");
+  });
+
+  it("does not expose discussion verbosity flags", () => {
+    const output = execFileSync(
+      "npx",
+      [
+        "tsx",
+        "src/cli/index.ts",
+        "run",
+        "--help",
+      ],
+      {
+        cwd: process.cwd(),
+        encoding: "utf-8",
+        env: { ...process.env, FORCE_COLOR: "0" },
+        stdio: ["ignore", "pipe", "pipe"],
+      }
+    );
+
+    expect(output).not.toContain("full-discussions");
+    expect(output).not.toContain("compact-discussions");
+  });
+
+  it("exposes live monitor and browser review flags", () => {
+    const output = execFileSync(
+      "npx",
+      [
+        "tsx",
+        "src/cli/index.ts",
+        "run",
+        "--help",
+      ],
+      {
+        cwd: process.cwd(),
+        encoding: "utf-8",
+        env: { ...process.env, FORCE_COLOR: "0" },
+        stdio: ["ignore", "pipe", "pipe"],
+      }
+    );
+
+    expect(output).toContain("--monitor");
+    expect(output).toContain("--ui-review");
+  });
 });

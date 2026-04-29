@@ -62,6 +62,7 @@ After each round of debate, you analyse the transcript and determine:
 - A single agent proposing alternatives alone is NOT sufficient for DIVERGING
 - The alternatives must differ in a way that leads to meaningfully different implementations
   (e.g., REST vs GraphQL, monolith vs microservices, sync vs async processing)
+- The alternatives must be ON-TOPIC for the original intent. An off-topic alternative — however unique — is NOT a valid branch.
 - Style differences, library choices within the same pattern, and naming are NOT branches
 - Round 1: strongly prefer CONTINUE unless divergence is completely obvious and irreconcilable
 - When in doubt between DIVERGING and CONTINUE, choose CONTINUE
@@ -73,7 +74,7 @@ After each round of debate, you analyse the transcript and determine:
 
 ## Calibration
 Over-branching wastes compute and fractures focus. Under-branching misses genuine trade-offs.
-Target: branch only when the team would genuinely implement both paths completely differently.
+Target: branch only when the team would genuinely implement both paths completely differently AND both paths are clearly within the intent.
 
 ## Output Format
 Respond with ONLY valid JSON:
@@ -87,7 +88,8 @@ Respond with ONLY valid JSON:
       "proposedBy": "<agent-role>",
       "supportedBy": ["<agent-role>"],
       "rationale": "Why this is worth exploring as a separate branch",
-      "confidence": 0.0-1.0
+      "confidence": 0.0-1.0,
+      "relevanceToIntent": 0.0-1.0
     }
   ],
   "summary": "Brief summary of the round's discussion and outcome"
@@ -100,7 +102,14 @@ that this branch is worth fully exploring (debating + implementing + judging):
 - 0.4-0.7: plausible but uncertain — might pay off, might be wasted compute
 - 0.0-0.3: weak; included only because an agent insisted
 
-Be calibrated: if you're emitting many alternatives, most should NOT be 0.9+.`;
+## RelevanceToIntent
+Each alternative MUST include relevanceToIntent in [0, 1] reflecting how directly the
+alternative addresses the **load-bearing claims** and **in-scope** items from the intent:
+- 0.8-1.0: directly addresses an in-scope concern from the intent
+- 0.4-0.7: tangentially related; addresses a real concern but one the intent did not centre on
+- 0.0-0.3: off-topic; addresses something in **Out of scope** or unrelated to the intent
+
+Be calibrated: most alternatives that are actually worth branching will score high on BOTH dimensions.`;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -265,12 +274,20 @@ export class DebateEngine {
 
     const isLastRound = roundNumber >= this.maxRounds;
 
+    const decomp = context.intentDecomposition;
+    const decompositionFrame = decomp
+      ? `\n## Intent Frame
+- Load-bearing: ${decomp.loadBearingClaims.join("; ") || "(none)"}
+- In scope: ${decomp.inScope.join("; ") || "(none)"}
+- Out of scope (off-topic — score low on relevanceToIntent if a branch lives here): ${decomp.outOfScope.join("; ") || "(none)"}\n`
+      : "";
+
     const userPrompt = `# Debate Transcript
 
 ## Context
 Original intent: ${context.originalIntent}
 ${context.branchDecision ? `Branch decision: ${context.branchDecision}` : ""}
-
+${decompositionFrame}
 ## Full Transcript
 ${transcript}
 ${alternativesSummary}
@@ -359,6 +376,7 @@ ALTERNATIVE [Approach B]: Robust path optimised for long-term flexibility — RA
         supportedBy: a.supportedBy,
         rationale: a.rationale,
         confidence: i === 0 ? 0.8 : 0.6,
+        relevanceToIntent: 0.8,
       }));
       return JSON.stringify({
         outcome: "diverging",

@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Tree-of-Thought agent orchestration for software development, with leaf execution handled by a configurable execution layer. A CLI tool where specialised agents (PM, BA, Tech Lead, Developer, Code Reviewer, QA) debate solutions in round-table format, branch when alternatives surface, optionally pause for a human plan review, execute leaf solutions, score results with an LLM judge, and visualize saved runs in a local browser UI.
+Tree-of-Thought agent orchestration for software development, with leaf execution handled by a configurable execution layer. A CLI tool where a core panel plus intent-selected specialists debate solutions in round-table format, branch when grounded alternatives surface, optionally pause for a human plan review, execute leaf solutions, score results with an LLM judge, and visualize saved runs in a local browser UI.
 
 ## Architecture (3 Layers)
 
@@ -100,6 +100,9 @@ npx tsx src/cli/index.ts resume <run-id>  # Resume
 - [x] Agent memory — `AgentInput` now separates `priorRoundsHistory` (all previous rounds) from `currentRoundSoFar` (earlier speakers this round); prompt renders them distinctly so each agent sees who has already spoken in the current round
 - [x] Moderator branching sensitivity — tightened rules: requires 2+ agents to independently support alternatives, strongly prefers CONTINUE in round 1, explicit calibration guidance added
 - [x] Agent system prompts — each agent now has a `Context Updates` section defining which fields it should emit, and a tightened `Critical Rule` raising the bar for proposing alternatives
+- [x] Persona boundaries — every specialty has explicit `Does` / `Does Not` guidance plus shared evidence rules forbidding invented facts, benchmarks, prices, volumes, compliance obligations, schemas, APIs, users, or business goals
+- [x] Specialist coverage — added UX Designer, Frontend Engineer, API / Integration Architect, Performance Engineer, and Technical Writer; optional specialists are selected by the analyzer only when grounded in the intent
+- [x] Research Planner — reframed the Researcher as an evidence-skeptic planner that separates verified facts from unknowns and does not launder prior debate into prior-art evidence
 
 ### Phase 4: Optimise (v0.2) ✅
 - [x] Pruning — moderator emits a per-alternative `confidence` (0-1); branches below `--prune-threshold` are dropped before exploration. If only one alternative survives, it folds into a consensus child.
@@ -152,7 +155,6 @@ When adding more:
 
 ## Known Issues
 
-- `AGENT_PARTICIPATION_BY_PHASE` is defined in types but also referenced differently in orchestrator — reconcile
 - Moderator prompt uses template literal placeholders (`${maxRounds}`) but replaced via string replace — fragile
 - `isLeaf()` logic may have edge cases at depth boundaries
 - No input validation on CLI args

@@ -23,14 +23,23 @@ describe("TreeOrchestrator", () => {
     expect(onAnalysisComplete).toHaveBeenCalledOnce();
     expect(onAnalysisComplete).toHaveBeenCalledWith({
       runMode: "implementation",
-      selectedAgents: ["product-manager", "tech-lead", "developer", "qa-engineer"],
+      selectedAgents: [
+        "product-manager",
+        "business-analyst",
+        "tech-lead",
+        "developer",
+        "code-reviewer",
+        "qa-engineer",
+      ],
       rationale: "Default panel (dry-run or analyzer fallback)",
     });
     expect(state.runMode).toBe("implementation");
     expect(state.selectedAgents).toEqual([
       "product-manager",
+      "business-analyst",
       "tech-lead",
       "developer",
+      "code-reviewer",
       "qa-engineer",
     ]);
     expect(state.rankedResults?.length).toBeGreaterThan(0);
@@ -63,20 +72,21 @@ describe("TreeOrchestrator", () => {
     }]);
   });
 
-  it("uses analyzer-selected agents even when none have the phase as primary", () => {
+  it("uses phase defaults when selected agents have no primary match for that phase", () => {
     const orchestrator = new TreeOrchestrator({} as OpenAI, { dryRun: true });
     (orchestrator as unknown as { runState: { selectedAgents: string[] } }).runState = {
-      selectedAgents: ["tech-lead", "developer", "code-reviewer"],
+      selectedAgents: ["tech-lead", "developer"],
     } as never;
 
     const agents = (orchestrator as unknown as {
       getAgentsForPhase: (p: string) => string[];
     }).getAgentsForPhase("requirements");
 
-    expect(agents).not.toContain("product-manager");
-    expect(agents).not.toContain("business-analyst");
-    expect(agents).not.toContain("qa-engineer");
-    expect(agents).toEqual(["tech-lead", "developer", "code-reviewer"]);
+    expect(agents).toContain("product-manager");
+    expect(agents).toContain("business-analyst");
+    expect(agents).toContain("qa-engineer");
+    expect(agents).not.toContain("tech-lead");
+    expect(agents).not.toContain("developer");
   });
 
   it("falls back to default panel only when analyzer never selected agents", () => {

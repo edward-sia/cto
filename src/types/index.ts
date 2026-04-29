@@ -28,6 +28,11 @@ export const AGENT_ROLES = [
   "security-engineer",
   "ml-engineer",
   "devops-engineer",
+  "ux-designer",
+  "frontend-engineer",
+  "api-integration-architect",
+  "performance-engineer",
+  "technical-writer",
 ] as const;
 
 export type AgentRole = (typeof AGENT_ROLES)[number];
@@ -45,6 +50,11 @@ export const AGENT_DISPLAY_NAMES: Record<AgentRole, string> = {
   "security-engineer": "Security Engineer",
   "ml-engineer": "ML Engineer",
   "devops-engineer": "DevOps Engineer",
+  "ux-designer": "UX Designer",
+  "frontend-engineer": "Frontend Engineer",
+  "api-integration-architect": "API / Integration Architect",
+  "performance-engineer": "Performance Engineer",
+  "technical-writer": "Technical Writer",
 };
 
 // ─── Tree Structure ──────────────────────────────────────────────────────────
@@ -57,9 +67,20 @@ export type TreePhase =
 
 export const PHASE_AGENTS: Record<TreePhase, AgentRole[]> = {
   requirements: ["product-manager", "business-analyst", "qa-engineer"],
-  architecture: ["tech-lead", "business-analyst", "code-reviewer", "qa-engineer"],
+  architecture: [
+    "tech-lead",
+    "business-analyst",
+    "code-reviewer",
+    "qa-engineer",
+  ],
   implementation: ["developer", "tech-lead", "code-reviewer"],
-  validation: ["qa-engineer", "code-reviewer", "developer"],
+  validation: [
+    "product-manager",
+    "business-analyst",
+    "developer",
+    "code-reviewer",
+    "qa-engineer",
+  ],
 };
 
 export type NodeStatus =

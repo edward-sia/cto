@@ -184,6 +184,8 @@ root (depth 0) — requirements debate
 
 ## Agent Participation by Phase
 
+The analyzer selects an intent-grounded agent panel before traversal. If the selected panel has no role for a phase, CTO falls back to the core phase roster below. Optional specialists are available but not part of fallback defaults: Research Planner, Data Engineer, Data Analyst, Security Engineer, ML Engineer, DevOps Engineer, UX Designer, Frontend Engineer, API / Integration Architect, Performance Engineer, and Technical Writer.
+
 ```mermaid
 graph LR
     subgraph requirements["Requirements (depth 0-1)"]
@@ -203,9 +205,11 @@ graph LR
         CR2[Code Reviewer]
     end
     subgraph validation["Validation (depth 6-7)"]
+        PM2[Product Manager]
+        BA3[Business Analyst]
+        DEV2[Developer]
         QA3[QA Engineer]
         CR3[Code Reviewer]
-        DEV2[Developer]
     end
 ```
 

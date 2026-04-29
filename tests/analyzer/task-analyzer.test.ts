@@ -27,8 +27,12 @@ describe("TaskAnalyzer", () => {
 
     expect(mockCreate).not.toHaveBeenCalled();
     expect(result.runMode).toBe("implementation");
+    expect(result.selectedAgents).toContain("business-analyst");
     expect(result.selectedAgents).toContain("developer");
     expect(result.selectedAgents).toContain("tech-lead");
+    expect(result.selectedAgents).toContain("code-reviewer");
+    expect(result.selectedAgents).not.toContain("security-engineer");
+    expect(result.selectedAgents).not.toContain("ml-engineer");
   });
 
   it("parses valid LLM response into TaskAnalysis", async () => {
@@ -47,6 +51,25 @@ describe("TaskAnalyzer", () => {
     expect(result.rationale).toBe("Auth task - security engineer selected");
   });
 
+  it("describes agent specialties with do and do-not boundaries in the classifier prompt", async () => {
+    const response = JSON.stringify({
+      runMode: "implementation",
+      selectedAgents: ["product-manager", "tech-lead", "developer", "frontend-engineer"],
+      rationale: "Frontend implementation task",
+    });
+    const openai = makeMockOpenAI(response);
+    const analyzer = new TaskAnalyzer(openai, "gpt-4o", false);
+
+    await analyzer.analyze("Build a responsive settings page");
+
+    const create = openai.chat.completions.create as ReturnType<typeof vi.fn>;
+    const systemPrompt = create.mock.calls[0][0].messages[0].content;
+    expect(systemPrompt).toContain('"frontend-engineer": Frontend Engineer');
+    expect(systemPrompt).toContain("Does:");
+    expect(systemPrompt).toContain("Does not:");
+    expect(systemPrompt).toContain("Do not select specialists for concerns not grounded in the intent");
+  });
+
   it("falls back to default panel when LLM returns invalid JSON", async () => {
     const openai = makeMockOpenAI("not valid json at all");
     const analyzer = new TaskAnalyzer(openai, "gpt-4o", false);
@@ -54,8 +77,50 @@ describe("TaskAnalyzer", () => {
     const result = await analyzer.analyze("Build something");
 
     expect(result.runMode).toBe("implementation");
+    expect(result.selectedAgents).toContain("business-analyst");
     expect(result.selectedAgents).toContain("developer");
     expect(result.selectedAgents).toContain("tech-lead");
+    expect(result.selectedAgents).toContain("code-reviewer");
+  });
+
+  it("falls back when the classifier returns only invalid roles", async () => {
+    const response = JSON.stringify({
+      runMode: "implementation",
+      selectedAgents: ["fake-agent"],
+      rationale: "Bad role",
+    });
+    const openai = makeMockOpenAI(response);
+    const analyzer = new TaskAnalyzer(openai, "gpt-4o", false);
+
+    const result = await analyzer.analyze("Build a CLI command");
+
+    expect(result.selectedAgents).toEqual([
+      "product-manager",
+      "business-analyst",
+      "tech-lead",
+      "developer",
+      "code-reviewer",
+      "qa-engineer",
+    ]);
+  });
+
+  it("adds implementation core roles when the classifier omits them", async () => {
+    const response = JSON.stringify({
+      runMode: "implementation",
+      selectedAgents: ["product-manager", "security-engineer"],
+      rationale: "Auth task",
+    });
+    const openai = makeMockOpenAI(response);
+    const analyzer = new TaskAnalyzer(openai, "gpt-4o", false);
+
+    const result = await analyzer.analyze("Add OAuth2 authentication");
+
+    expect(result.selectedAgents).toEqual([
+      "product-manager",
+      "security-engineer",
+      "tech-lead",
+      "developer",
+    ]);
   });
 
   it("filters out hallucinated agent roles from LLM response", async () => {

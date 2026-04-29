@@ -6,9 +6,24 @@ import { AGENT_ROLES } from "../types/index.js";
 import { withRetry } from "../utils/retry.js";
 import { addUsageFromResponse, emptyUsage } from "../utils/usage.js";
 
+const DEFAULT_IMPLEMENTATION_AGENTS: AgentRole[] = [
+  "product-manager",
+  "business-analyst",
+  "tech-lead",
+  "developer",
+  "code-reviewer",
+  "qa-engineer",
+];
+
+const DEFAULT_EXPLORATION_AGENTS: AgentRole[] = [
+  "researcher",
+  "business-analyst",
+  "data-analyst",
+];
+
 const DEFAULT_ANALYSIS: TaskAnalysis = {
   runMode: "implementation",
-  selectedAgents: ["product-manager", "tech-lead", "developer", "qa-engineer"],
+  selectedAgents: DEFAULT_IMPLEMENTATION_AGENTS,
   rationale: "Default panel (dry-run or analyzer fallback)",
 };
 
@@ -35,7 +50,13 @@ export class TaskAnalyzer {
 
     const agentDescriptions = AGENT_ROLES.map((role) => {
       const definition = AGENT_DEFINITIONS[role];
-      return `- "${role}": ${definition.displayName} - participates in: ${definition.primaryPhases.join(", ")}`;
+      return [
+        `- "${role}": ${definition.displayName}`,
+        `  Specialty: ${definition.selectionSummary}`,
+        `  Participates in: ${definition.primaryPhases.join(", ")}`,
+        `  Does: ${definition.does.join("; ")}`,
+        `  Does not: ${definition.doesNot.join("; ")}`,
+      ].join("\n");
     }).join("\n");
 
     const systemPrompt = `You are a task classifier for a software development orchestration system.
@@ -53,6 +74,8 @@ ${agentDescriptions}
 - For implementation: always include "developer" and "tech-lead"
 - For exploration: always include "researcher" or "data-analyst" as appropriate
 - Omit agents with no relevance to the intent
+- Do not select specialists for concerns not grounded in the intent or verified context
+- Do not add security, ML, data, DevOps, frontend, UX, API, performance, or documentation specialists unless the intent explicitly needs that specialty
 
 Respond with ONLY valid JSON - no markdown, no explanation:
 {
@@ -77,9 +100,7 @@ Respond with ONLY valid JSON - no markdown, no explanation:
       const content = response.choices[0]?.message?.content ?? "";
       const jsonStr = content.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
       const raw = TaskAnalysisSchema.parse(JSON.parse(jsonStr));
-      const selectedAgents = raw.selectedAgents.filter((role) =>
-        VALID_ROLES.has(role)
-      ) as AgentRole[];
+      const selectedAgents = normalizeSelectedAgents(raw.runMode, raw.selectedAgents);
 
       return {
         runMode: raw.runMode,
@@ -91,4 +112,36 @@ Respond with ONLY valid JSON - no markdown, no explanation:
       return DEFAULT_ANALYSIS;
     }
   }
+}
+
+function normalizeSelectedAgents(
+  runMode: TaskAnalysis["runMode"],
+  selectedAgents: string[]
+): AgentRole[] {
+  const valid = selectedAgents.filter((role) => VALID_ROLES.has(role)) as AgentRole[];
+  const deduped = [...new Set(valid)];
+
+  if (deduped.length === 0) {
+    return runMode === "exploration"
+      ? [...DEFAULT_EXPLORATION_AGENTS]
+      : [...DEFAULT_IMPLEMENTATION_AGENTS];
+  }
+
+  if (runMode === "implementation") {
+    return withRequiredAgents(deduped, ["tech-lead", "developer"]);
+  }
+
+  if (!deduped.includes("researcher") && !deduped.includes("data-analyst")) {
+    return ["researcher", ...deduped];
+  }
+
+  return deduped;
+}
+
+function withRequiredAgents(agents: AgentRole[], required: AgentRole[]): AgentRole[] {
+  const merged = [...agents];
+  for (const role of required) {
+    if (!merged.includes(role)) merged.push(role);
+  }
+  return merged;
 }

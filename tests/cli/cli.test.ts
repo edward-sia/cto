@@ -27,7 +27,9 @@ describe("CLI", () => {
     );
 
     expect(output).toContain("Run mode:  implementation");
-    expect(output).toContain("Agents:    Product Manager, Tech Lead, Developer, QA Engineer");
+    expect(output).toContain(
+      "Agents:    Product Manager, Business Analyst, Tech Lead, Developer, Code Reviewer, QA Engineer"
+    );
     expect(output).toContain("Rationale: Default panel (dry-run or analyzer fallback)");
   });
 

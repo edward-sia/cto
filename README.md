@@ -5,7 +5,7 @@ Tree-of-Thought agent orchestration for software development. A CLI tool where s
 ## How It Works
 
 1. You provide a high-level intent (`"Build a REST API for a todo app"`)
-2. A panel of six agents debates the intent in structured rounds
+2. A task analyzer selects the relevant core and specialist agents, then the panel debates the intent in structured rounds
 3. When agents surface fundamentally different approaches, the tree **branches** — each alternative becomes an independent child node
 4. When agents converge, the tree deepens into the next phase
 5. If `--interactive-plan` is enabled, each candidate leaf pauses for a human decision: proceed, revise once, or kill
@@ -192,16 +192,20 @@ codex cloud apply <task-id>      # apply the diff to the leaf workdir
 
 ## Agent Panel
 
-Six specialised agents participate across four debate phases:
+CTO includes a core software-delivery panel plus opt-in specialists. The default implementation panel is Product Manager, Business Analyst, Tech Lead, Developer, Code Reviewer, and QA Engineer; domain specialists are selected only when the intent grounds that specialty.
 
 | Phase | Agents |
 |---|---|
 | Requirements | Product Manager, Business Analyst, QA Engineer |
 | Architecture | Tech Lead, Business Analyst, Code Reviewer, QA Engineer |
 | Implementation | Developer, Tech Lead, Code Reviewer |
-| Validation | QA Engineer, Code Reviewer, Developer |
+| Validation | Product Manager, Business Analyst, Developer, Code Reviewer, QA Engineer |
 
-Each agent is prompted to explicitly surface alternatives. The moderator (a separate LLM call) classifies each round as **consensus**, **diverging**, or **continue**. Divergence triggers branching; consensus advances depth.
+Available specialists are Research Planner, Data Engineer, Data Analyst, Security Engineer, ML Engineer, DevOps Engineer, UX Designer, Frontend Engineer, API / Integration Architect, Performance Engineer, and Technical Writer. Each persona has explicit `Does` / `Does Not` boundaries and a shared evidence rule: do not invent facts, benchmarks, studies, prices, usage volumes, latency targets, compliance obligations, schemas, APIs, users, or business goals. Unknowns must be labelled as `UNKNOWN` / `ASSUMPTION`, asked as challenge questions, or deferred to a verification spike.
+
+The Research Planner is an evidence-skeptic role, not a source generator. It may only treat prior art as grounded when it appears in verified domain facts, source-checked context, or the original intent.
+
+Each agent is prompted to surface alternatives only when the options are in scope and would lead to meaningfully different implementations. The moderator (a separate LLM call) classifies each round as **consensus**, **diverging**, or **continue**. Divergence triggers branching; consensus advances depth.
 
 ## Scoring Dimensions
 
@@ -244,7 +248,7 @@ When interactive planning is enabled, `TreeNode.humanIntervention` records `proc
 
 **Phase 2 delivered:** Zod validation on all LLM responses, exponential-backoff retry (3 attempts, 1s/2s/4s), token budget tracking with warnings, graceful Ctrl+C shutdown with state save.
 
-**Phase 3 delivered:** Structured `CONTEXT_UPDATE` fields from agents (PRD, acceptance criteria, architecture decisions, implementation spec, test strategy) accumulated and propagated into every child node's context. Agent prompts now explicitly separate prior-round history from current-round speakers, giving each agent clear visibility into who has already spoken this round. Moderator sensitivity tightened — branching now requires cross-agent support, is discouraged in round 1, and defaults to CONTINUE over DIVERGING when ambiguous.
+**Phase 3 delivered:** Structured `CONTEXT_UPDATE` fields from agents (PRD, acceptance criteria, architecture decisions, implementation spec, test strategy) accumulated and propagated into every child node's context. Agent prompts now explicitly separate prior-round history from current-round speakers, giving each agent clear visibility into who has already spoken this round. Moderator sensitivity tightened so branching requires cross-agent support and grounded, in-scope alternatives. Persona prompts include explicit specialty boundaries and shared anti-hallucination rules.
 
 **Phase 4 delivered:** Pre-run cost estimator (expected and worst-case node/token/USD projection, model-aware pricing). Confidence-based pruning — moderator emits a 0–1 score per alternative, branches below `--prune-threshold` are dropped before exploration. Parallel leaf execution and judging via a concurrency-limited pool (`--leaf-concurrency`). Codex Cloud best-of-N support via `--cloud-env` and `--cloud-attempts`. Per-leaf token usage breakdown (input / cached input / output / reasoning) aggregated and shown in the final summary.
 

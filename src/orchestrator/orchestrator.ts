@@ -21,6 +21,7 @@ import type {
   DomainFacts,
   HumanPlanDecision,
 } from "../types/index.js";
+import { PHASE_AGENTS } from "../types/index.js";
 import { addUsage, emptyUsage } from "../utils/usage.js";
 import { AGENT_DEFINITIONS } from "../agents/definitions.js";
 import { TaskAnalyzer } from "../analyzer/task-analyzer.js";
@@ -36,13 +37,6 @@ const DEFAULT_PHASE_DEPTHS: Record<TreePhase, [number, number]> = {
   architecture: [2, 3],
   implementation: [4, 5],
   validation: [6, 7],
-};
-
-const PHASE_AGENT_MAP: Record<TreePhase, AgentRole[]> = {
-  requirements: ["product-manager", "business-analyst", "qa-engineer"],
-  architecture: ["tech-lead", "business-analyst", "code-reviewer", "qa-engineer"],
-  implementation: ["developer", "tech-lead", "code-reviewer"],
-  validation: ["qa-engineer", "code-reviewer", "developer"],
 };
 
 export const DEFAULT_RUN_CONFIG: RunConfig = {
@@ -516,9 +510,9 @@ export class TreeOrchestrator {
       const phaseMatches = selected.filter((role) =>
         AGENT_DEFINITIONS[role].primaryPhases.includes(phase)
       );
-      return phaseMatches.length > 0 ? phaseMatches : selected;
+      return phaseMatches.length > 0 ? phaseMatches : PHASE_AGENTS[phase];
     }
-    return PHASE_AGENT_MAP[phase];
+    return PHASE_AGENTS[phase];
   }
 
   private getPhaseForDepth(depth: number): TreePhase {

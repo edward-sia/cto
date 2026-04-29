@@ -20,6 +20,7 @@ import type {
 } from "../types/index.js";
 import { AGENT_DEFINITIONS } from "../agents/definitions.js";
 import { TaskAnalyzer } from "../analyzer/task-analyzer.js";
+import { IntentDecomposer } from "../analyzer/intent-decomposer.js";
 import { DebateEngine, type DebateProgressEvent } from "../debate/engine.js";
 import { CodexExecutor } from "../execution/codex-client.js";
 import { Judge } from "../judge/judge.js";
@@ -89,6 +90,7 @@ export class TreeOrchestrator {
   private codex: CodexExecutor;
   private judge: Judge;
   private analyzer: TaskAnalyzer;
+  private decomposer: IntentDecomposer;
   private synthesizer: Synthesizer;
   private callbacks: OrchestratorCallbacks;
   private runState!: RunState;
@@ -107,6 +109,7 @@ export class TreeOrchestrator {
     });
     this.judge = new Judge(openai, this.config.judgeModel, this.config.dryRun);
     this.analyzer = new TaskAnalyzer(openai, this.config.reasoningModel, this.config.dryRun);
+    this.decomposer = new IntentDecomposer(openai, this.config.reasoningModel, this.config.dryRun);
     this.synthesizer = new Synthesizer(openai, this.config.reasoningModel, this.config.dryRun);
     this.callbacks = callbacks;
   }
@@ -116,8 +119,11 @@ export class TreeOrchestrator {
     const analysis = await this.analyzer.analyze(intent);
     this.callbacks.onAnalysisComplete?.(analysis);
 
+    const decomposition = await this.decomposer.decompose(intent);
+
     const root = this.createNode(null, 0, {
       originalIntent: intent,
+      intentDecomposition: decomposition,
       ancestorSummaries: [],
     });
 

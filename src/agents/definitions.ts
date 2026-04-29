@@ -496,8 +496,35 @@ export function buildAgentPrompt(
       )
       .join("\n\n");
 
+  const decomp = input.context.intentDecomposition;
+  const decompositionSection = decomp
+    ? `## Intent Decomposition (treat as the debate frame)
+**Load-bearing claims (must honour):**
+${decomp.loadBearingClaims.map((c) => `- ${c}`).join("\n") || "- (none)"}
+
+**Undefined terms (debate priority — resolve these first):**
+${
+  decomp.undefinedTerms.length
+    ? decomp.undefinedTerms.map((t) => `- ${t.term}: ${t.needsResolution}`).join("\n")
+    : "- (none)"
+}
+
+**In scope:**
+${decomp.inScope.map((s) => `- ${s}`).join("\n") || "- (none)"}
+
+**Out of scope (do NOT introduce these concerns):**
+${decomp.outOfScope.map((s) => `- ${s}`).join("\n") || "- (none)"}
+
+**Known unknowns (verify before assuming):**
+${decomp.knownUnknowns.map((u) => `- ${u}`).join("\n") || "- (none)"}
+
+**Feasibility flags:**
+${decomp.feasibilityFlags.map((f) => `- ${f}`).join("\n") || "- (none)"}`
+    : "";
+
   const contextSummary = [
     `## Original Intent\n${input.context.originalIntent}`,
+    decompositionSection,
     input.context.prd ? `## PRD\n${input.context.prd}` : "",
     input.context.acceptanceCriteria?.length
       ? `## Acceptance Criteria\n${input.context.acceptanceCriteria.map((c) => `- ${c}`).join("\n")}`
@@ -544,7 +571,9 @@ ${[priorRoundsSection, currentRoundSection, openingLine].filter(Boolean).join("\
 
 It is now YOUR turn to speak. Respond in your defined output format.
 
-Only propose ALTERNATIVE [...] when you see genuinely different approaches worth full separate exploration. Otherwise, surface concerns and recommendations inline.
+Stay within the **In scope** items above. Do NOT introduce concerns from **Out of scope**. Treat **Load-bearing claims** as constraints. Treat **Undefined terms** as the highest-priority debate items.
+
+Only propose ALTERNATIVE [...] when you see genuinely different approaches worth full separate exploration AND the alternative is on-topic for the original intent. Otherwise, surface concerns and recommendations inline.
 Structure alternatives as:
 ALTERNATIVE [label]: [description] — RATIONALE: [why this deserves its own branch]
 

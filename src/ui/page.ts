@@ -32,26 +32,33 @@ function css(): string {
     :root {
       color-scheme: light;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      --bg: #f8fafc;
-      --surface: #ffffff;
-      --surface-muted: #f1f5f9;
-      --text: #0f172a;
+      --bg: #eef3f8;
+      --surface: rgba(255, 255, 255, 0.82);
+      --surface-solid: #ffffff;
+      --surface-muted: rgba(244, 247, 251, 0.88);
+      --text: #111827;
       --muted: #64748b;
-      --border: #dbe3ee;
-      --strong-border: #cbd5e1;
-      --accent: #0891b2;
+      --border: rgba(148, 163, 184, 0.28);
+      --strong-border: rgba(100, 116, 139, 0.3);
+      --accent: #007aff;
+      --accent-soft: rgba(0, 122, 255, 0.1);
+      --agent: #5e5ce6;
+      --agent-soft: rgba(94, 92, 230, 0.1);
       --success: #15803d;
       --danger: #b91c1c;
       --warning: #b45309;
-      --purple: #7c3aed;
+      --purple: #8b5cf6;
+      --glass-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+      --hairline: rgba(255, 255, 255, 0.72);
     }
 
     * { box-sizing: border-box; }
 
     body {
       margin: 0;
-      min-width: 960px;
-      background: var(--bg);
+      min-width: 1120px;
+      background:
+        linear-gradient(135deg, #f8fbff 0%, #edf3f8 44%, #f6f8fb 100%);
       color: var(--text);
     }
 
@@ -64,6 +71,7 @@ function css(): string {
       display: grid;
       grid-template-rows: 52px minmax(0, 1fr);
       overflow: hidden;
+      background: rgba(255, 255, 255, 0.18);
     }
 
     .topbar {
@@ -72,8 +80,10 @@ function css(): string {
       justify-content: space-between;
       gap: 16px;
       padding: 0 16px;
-      border-bottom: 1px solid #e2e8f0;
-      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.72);
+      backdrop-filter: blur(22px) saturate(1.55);
+      -webkit-backdrop-filter: blur(22px) saturate(1.55);
     }
 
     .brand {
@@ -89,13 +99,15 @@ function css(): string {
       width: 34px;
       height: 24px;
       border-radius: 6px;
-      background: #0f172a;
+      background:
+        linear-gradient(135deg, rgba(0, 122, 255, 0.95), rgba(94, 92, 230, 0.95));
       color: #ffffff;
       display: grid;
       place-items: center;
       font-size: 11px;
       line-height: 1;
       flex: 0 0 auto;
+      box-shadow: 0 8px 18px rgba(0, 122, 255, 0.24);
     }
 
     .topbar-meta {
@@ -112,10 +124,10 @@ function css(): string {
       max-width: 240px;
       overflow: hidden;
       text-overflow: ellipsis;
-      border: 1px solid #dbe3ee;
+      border: 1px solid var(--border);
       border-radius: 999px;
       padding: 4px 9px;
-      background: #f8fafc;
+      background: rgba(255, 255, 255, 0.66);
       color: #334155;
       font-weight: 700;
     }
@@ -123,15 +135,17 @@ function css(): string {
     .main {
       min-height: 0;
       display: grid;
-      grid-template-columns: 278px minmax(420px, 1fr) 380px;
+      grid-template-columns: 300px minmax(360px, 1fr) clamp(460px, 34vw, 640px);
     }
 
     .runs {
       min-height: 0;
       overflow: auto;
-      border-right: 1px solid #e2e8f0;
+      border-right: 1px solid var(--border);
       background: var(--surface-muted);
       padding: 12px;
+      backdrop-filter: blur(18px) saturate(1.35);
+      -webkit-backdrop-filter: blur(18px) saturate(1.35);
     }
 
     .panel-heading {
@@ -155,22 +169,28 @@ function css(): string {
     .run {
       width: 100%;
       text-align: left;
-      border: 1px solid var(--border);
-      background: var(--surface);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: rgba(255, 255, 255, 0.68);
       border-radius: 8px;
       padding: 10px;
       cursor: pointer;
-      transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+      box-shadow: 0 1px 0 var(--hairline), 0 10px 28px rgba(15, 23, 42, 0.04);
+      transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
     }
 
     .run:hover {
-      border-color: #94a3b8;
+      background: rgba(255, 255, 255, 0.9);
+      border-color: rgba(0, 122, 255, 0.36);
       transform: translateY(-1px);
     }
 
     .run.active {
       border-color: var(--accent);
-      box-shadow: inset 3px 0 0 var(--accent);
+      background: rgba(255, 255, 255, 0.94);
+      box-shadow:
+        inset 3px 0 0 var(--accent),
+        0 1px 0 var(--hairline),
+        0 16px 36px rgba(0, 122, 255, 0.12);
     }
 
     .run-title {
@@ -207,14 +227,19 @@ function css(): string {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      border: 1px solid #e2e8f0;
+      border: 1px solid rgba(148, 163, 184, 0.24);
       border-radius: 999px;
       padding: 3px 7px;
-      background: #f8fafc;
+      background: rgba(255, 255, 255, 0.7);
       color: #475569;
       font-size: 11px;
       font-weight: 700;
       line-height: 1.2;
+    }
+
+    .run-meta .meta-chip:last-child {
+      flex-basis: 100%;
+      width: fit-content;
     }
 
     .canvas {
@@ -223,9 +248,9 @@ function css(): string {
       min-height: 0;
       overflow: hidden;
       background:
-        linear-gradient(#e2e8f0 1px, transparent 1px) 0 0 / 28px 28px,
-        linear-gradient(90deg, #e2e8f0 1px, transparent 1px) 0 0 / 28px 28px,
-        var(--bg);
+        linear-gradient(rgba(148, 163, 184, 0.18) 1px, transparent 1px) 0 0 / 28px 28px,
+        linear-gradient(90deg, rgba(148, 163, 184, 0.18) 1px, transparent 1px) 0 0 / 28px 28px,
+        linear-gradient(135deg, rgba(255, 255, 255, 0.62), rgba(238, 243, 248, 0.72));
     }
 
     .canvas-toolbar {
@@ -251,8 +276,10 @@ function css(): string {
     .tool-button,
     .toggle-button {
       min-height: 32px;
-      border: 1px solid var(--strong-border);
-      background: rgba(255, 255, 255, 0.96);
+      border: 1px solid rgba(148, 163, 184, 0.32);
+      background: rgba(255, 255, 255, 0.76);
+      backdrop-filter: blur(18px) saturate(1.45);
+      -webkit-backdrop-filter: blur(18px) saturate(1.45);
       border-radius: 7px;
       padding: 7px 9px;
       color: #334155;
@@ -260,18 +287,22 @@ function css(): string {
       font-size: 12px;
       font-weight: 800;
       line-height: 1;
-      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+      box-shadow: 0 1px 0 var(--hairline), 0 12px 24px rgba(15, 23, 42, 0.08);
+      transition: background 140ms ease, border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
     }
 
     .tool-button:hover,
     .toggle-button:hover {
-      border-color: #94a3b8;
+      border-color: rgba(0, 122, 255, 0.42);
+      background: rgba(255, 255, 255, 0.92);
+      transform: translateY(-1px);
     }
 
     .toggle-button.active {
       border-color: var(--accent);
-      color: #0e7490;
-      box-shadow: inset 0 0 0 1px rgba(8, 145, 178, 0.18);
+      color: #0057c2;
+      background: rgba(0, 122, 255, 0.1);
+      box-shadow: inset 0 0 0 1px rgba(0, 122, 255, 0.14), 0 12px 24px rgba(0, 122, 255, 0.12);
     }
 
     .tree-svg {
@@ -287,7 +318,7 @@ function css(): string {
     }
 
     .edge {
-      stroke: #94a3b8;
+      stroke: rgba(94, 92, 230, 0.42);
       stroke-width: 2;
       fill: none;
     }
@@ -297,15 +328,16 @@ function css(): string {
     }
 
     .node-rect {
-      fill: #ffffff;
-      stroke: #cbd5e1;
+      fill: rgba(255, 255, 255, 0.88);
+      stroke: rgba(148, 163, 184, 0.34);
       stroke-width: 1;
-      filter: drop-shadow(0 2px 4px rgba(15, 23, 42, 0.07));
+      filter: drop-shadow(0 12px 22px rgba(15, 23, 42, 0.08));
     }
 
     .node-rect.selected {
       stroke: var(--accent);
       stroke-width: 2;
+      filter: drop-shadow(0 18px 30px rgba(0, 122, 255, 0.18));
     }
 
     .node-label {
@@ -321,29 +353,39 @@ function css(): string {
     }
 
     .score-badge {
-      fill: #eef2ff;
-      stroke: #c7d2fe;
+      fill: rgba(0, 122, 255, 0.1);
+      stroke: rgba(0, 122, 255, 0.22);
       stroke-width: 1;
     }
 
     .score-text {
-      fill: #3730a3;
+      fill: #0057c2;
       font-size: 10px;
       font-weight: 900;
+    }
+
+    .node-id {
+      fill: #94a3b8;
+      font-size: 10px;
+      font-weight: 800;
     }
 
     .inspector {
       min-width: 0;
       min-height: 0;
       overflow: auto;
-      border-left: 1px solid #e2e8f0;
-      background: var(--surface);
+      border-left: 1px solid var(--border);
+      background: rgba(244, 247, 251, 0.72);
+      backdrop-filter: blur(18px) saturate(1.25);
+      -webkit-backdrop-filter: blur(18px) saturate(1.25);
     }
 
     .inspector-header {
-      padding: 14px 16px 12px;
-      border-bottom: 1px solid #e2e8f0;
-      background: #ffffff;
+      padding: 16px 20px 14px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.72);
+      backdrop-filter: blur(22px) saturate(1.45);
+      -webkit-backdrop-filter: blur(22px) saturate(1.45);
     }
 
     .inspector-title {
@@ -357,10 +399,27 @@ function css(): string {
     }
 
     .inspector-subtitle {
-      margin-top: 5px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+      overflow: visible;
+      white-space: normal;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .inspector-chip {
+      min-width: 0;
+      max-width: 100%;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      border-radius: 999px;
+      padding: 4px 8px;
+      background: rgba(255, 255, 255, 0.62);
       color: #64748b;
       font-size: 12px;
       font-weight: 700;
@@ -371,16 +430,18 @@ function css(): string {
       position: sticky;
       top: 0;
       z-index: 1;
-      border-bottom: 1px solid #e2e8f0;
-      background: #ffffff;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.68);
+      backdrop-filter: blur(20px) saturate(1.45);
+      -webkit-backdrop-filter: blur(20px) saturate(1.45);
     }
 
     .tab {
       flex: 1 1 0;
       min-width: 0;
       border: 0;
-      background: #ffffff;
-      padding: 11px 4px;
+      background: transparent;
+      padding: 12px 4px;
       color: #64748b;
       cursor: pointer;
       font-size: 12px;
@@ -394,29 +455,80 @@ function css(): string {
     }
 
     .tab-content {
-      padding: 14px 16px 24px;
+      padding: 18px 20px 28px;
       font-size: 13px;
-      line-height: 1.45;
+      line-height: 1.6;
     }
 
     .section {
-      padding: 0 0 14px;
+      padding: 16px;
       margin: 0 0 14px;
-      border-bottom: 1px solid #eef2f7;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.78);
+      box-shadow: 0 1px 0 var(--hairline), 0 14px 34px rgba(15, 23, 42, 0.05);
     }
 
     .section:last-child {
-      border-bottom: 0;
       margin-bottom: 0;
     }
 
     .section h3 {
-      margin: 0 0 8px;
+      margin: 0 0 10px;
       color: #334155;
       font-size: 12px;
       font-weight: 900;
       letter-spacing: 0.04em;
       text-transform: uppercase;
+    }
+
+    details.section {
+      padding: 0;
+      overflow: hidden;
+    }
+
+    details.section > summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      color: #334155;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      list-style: none;
+      text-transform: uppercase;
+    }
+
+    details.section > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    details.section > summary::marker {
+      content: "";
+    }
+
+    details.section > summary::after {
+      content: "Expand";
+      flex: 0 0 auto;
+      border: 1px solid #dbe3ee;
+      border-radius: 999px;
+      padding: 3px 8px;
+      background: rgba(255, 255, 255, 0.72);
+      color: #64748b;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.02em;
+    }
+
+    details.section[open] > summary::after {
+      content: "Collapse";
+    }
+
+    .section-body {
+      padding: 0 16px 16px;
     }
 
     .kv {
@@ -437,13 +549,65 @@ function css(): string {
       color: #0f172a;
     }
 
+    .field {
+      margin: 12px 0 0;
+    }
+
+    .field:first-child {
+      margin-top: 0;
+    }
+
+    .field-label {
+      margin: 0 0 5px;
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .text-block,
+    .message-content {
+      white-space: pre-wrap;
+      overflow-wrap: break-word;
+      color: #1e293b;
+      font-size: 13px;
+      line-height: 1.62;
+    }
+
+    .text-block {
+      border-left: 3px solid rgba(148, 163, 184, 0.4);
+      padding: 1px 0 1px 12px;
+    }
+
+    .summary-block {
+      border-left-color: var(--accent);
+      color: #0f172a;
+      font-size: 13.5px;
+    }
+
     .message,
     .alt-card {
-      border: 1px solid #e2e8f0;
+      border: 1px solid rgba(148, 163, 184, 0.2);
       border-radius: 8px;
-      padding: 9px;
-      margin: 8px 0;
-      background: #f8fafc;
+      padding: 12px;
+      margin: 10px 0;
+      background: rgba(255, 255, 255, 0.78);
+      box-shadow: 0 1px 0 var(--hairline);
+    }
+
+    .message {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .message::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 3px;
+      background: var(--agent);
+      opacity: 0.62;
     }
 
     .message-meta {
@@ -451,14 +615,86 @@ function css(): string {
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-      margin-bottom: 5px;
+      margin-bottom: 8px;
       color: #475569;
       font-size: 11px;
       font-weight: 900;
     }
 
+    .role-pill {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      border-radius: 999px;
+      padding: 4px 8px;
+      background: var(--agent-soft);
+      color: #3730a3;
+      text-transform: capitalize;
+    }
+
+    .role-product-manager { background: rgba(0, 122, 255, 0.11); color: #0057c2; }
+    .role-business-analyst { background: rgba(52, 199, 89, 0.13); color: #176b33; }
+    .role-tech-lead { background: rgba(94, 92, 230, 0.12); color: #3730a3; }
+    .role-developer { background: rgba(255, 149, 0, 0.14); color: #8a4b00; }
+    .role-code-reviewer { background: rgba(255, 45, 85, 0.1); color: #9f1239; }
+    .role-qa { background: rgba(90, 200, 250, 0.16); color: #075985; }
+
+    .timestamp {
+      flex: 0 0 auto;
+      color: #94a3b8;
+      font-weight: 800;
+    }
+
+    .alt-card {
+      background: rgba(248, 250, 252, 0.78);
+    }
+
+    .alt-title {
+      margin: 0 0 8px;
+      color: #0f172a;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .mini-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin: 0 0 12px;
+    }
+
+    .mini-metric {
+      min-width: 0;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 8px;
+      padding: 8px;
+      background: rgba(255, 255, 255, 0.7);
+    }
+
+    .mini-metric-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #64748b;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .mini-metric-value {
+      margin-top: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #0f172a;
+      font-size: 13px;
+      font-weight: 900;
+    }
+
     .empty {
-      padding: 28px;
+      padding: 24px;
       color: #64748b;
       font-size: 13px;
       line-height: 1.45;
@@ -483,24 +719,28 @@ function css(): string {
     }
 
     .list {
-      margin: 6px 0 0;
-      padding-left: 18px;
+      margin: 8px 0 0;
+      padding-left: 20px;
     }
 
     .list li {
-      margin: 4px 0;
-      overflow-wrap: anywhere;
+      margin: 6px 0;
+      overflow-wrap: break-word;
+      color: #1e293b;
+      line-height: 1.55;
     }
 
     pre {
       white-space: pre-wrap;
       overflow-wrap: anywhere;
-      background: #f8fafc;
+      max-height: min(52vh, 520px);
+      overflow: auto;
+      background: #0f172a;
       border: 1px solid #e2e8f0;
       border-radius: 8px;
-      padding: 10px;
-      color: #0f172a;
-      font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      padding: 12px;
+      color: #e2e8f0;
+      font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
     }
   `;
 }
@@ -509,17 +749,17 @@ function clientScript(): string {
   return String.raw`function clientScript() {
   "use strict";
 
-  var NODE_WIDTH = 200;
-  var NODE_HEIGHT = 72;
-  var COLUMN_GAP = 120;
-  var ROW_GAP = 28;
+  var NODE_WIDTH = 230;
+  var NODE_HEIGHT = 88;
+  var COLUMN_GAP = 130;
+  var ROW_GAP = 34;
   var MARGIN = 60;
   var SVG_NS = "http://www.w3.org/2000/svg";
   var PHASE_COLORS = {
-    requirements: "#0891b2",
-    architecture: "#7c3aed",
-    implementation: "#2563eb",
-    validation: "#15803d"
+    requirements: "#007aff",
+    architecture: "#5e5ce6",
+    implementation: "#34c759",
+    validation: "#ff9500"
   };
 
   var state = {
@@ -895,15 +1135,22 @@ function clientScript(): string {
     label.setAttribute("class", "node-label");
     label.setAttribute("x", "16");
     label.setAttribute("y", "24");
-    label.textContent = truncate(node.branchLabel || "root", 25);
+    label.textContent = truncate(node.branchLabel || "root", 28);
     group.appendChild(label);
 
     var secondary = svgEl("text");
     secondary.setAttribute("class", "node-secondary");
     secondary.setAttribute("x", "16");
-    secondary.setAttribute("y", "46");
-    secondary.textContent = truncate((node.phase || "phase") + " / " + (node.status || "status"), 29);
+    secondary.setAttribute("y", "45");
+    secondary.textContent = truncate((node.phase || "phase") + " / " + (node.status || "status"), 34);
     group.appendChild(secondary);
+
+    var description = svgEl("text");
+    description.setAttribute("class", "node-id");
+    description.setAttribute("x", "16");
+    description.setAttribute("y", "66");
+    description.textContent = truncate(node.branchDescription || node.id || "", 39);
+    group.appendChild(description);
 
     if (node.score && typeof node.score.composite === "number") {
       var badge = svgEl("rect");
@@ -950,7 +1197,12 @@ function clientScript(): string {
       state.selectedNodeId = node.id;
     }
 
-    renderInspectorHeader(node.branchLabel || "root", (node.phase || "phase") + " / " + (node.status || "status") + " / depth " + String(node.depth || 0));
+    renderInspectorHeader(node.branchLabel || "root", [
+      node.phase || "phase",
+      node.status || "status",
+      "depth " + String(node.depth || 0),
+      node.id || "node"
+    ]);
 
     if (state.activeTab === "debate") {
       renderDebateTab(node);
@@ -971,7 +1223,12 @@ function clientScript(): string {
 
     var detail = document.createElement("div");
     detail.className = "inspector-subtitle";
-    detail.textContent = subtitle;
+    (Array.isArray(subtitle) ? subtitle : [subtitle]).forEach(function (item) {
+      var chip = document.createElement("span");
+      chip.className = "inspector-chip";
+      chip.textContent = item;
+      detail.appendChild(chip);
+    });
     refs.inspectorHeader.appendChild(detail);
   }
 
@@ -981,8 +1238,8 @@ function clientScript(): string {
     });
 
     var overview = section("Summary");
-    appendKeyValue(overview, "Branch", node.branchDescription || "No branch description recorded.");
-    appendKeyValue(overview, "Debate", node.debate && node.debate.summary ? node.debate.summary : "No debate summary recorded.");
+    appendField(overview, "Branch", node.branchDescription || "No branch description recorded.", "summary-block");
+    appendField(overview, "Debate", node.debate && node.debate.summary ? node.debate.summary : "No debate summary recorded.", "summary-block");
     appendKeyValue(overview, "Path", path.join(" / "));
     appendKeyValue(overview, "Created", formatDateTime(node.createdAt));
     appendKeyValue(overview, "Updated", formatDateTime(node.updatedAt));
@@ -1002,13 +1259,13 @@ function clientScript(): string {
 
     var outcome = section("Moderator Outcome");
     appendKeyValue(outcome, "Final", transcript.finalOutcome || "Not recorded");
-    appendKeyValue(outcome, "Summary", transcript.summary || "No summary recorded.");
+    appendField(outcome, "Summary", transcript.summary || "No summary recorded.", "summary-block");
     appendKeyValue(outcome, "Tokens", formatNumber(transcript.tokenUsage || 0));
     refs.tabContent.appendChild(outcome);
 
     transcript.rounds.forEach(function (round) {
-      var roundSection = section("Round " + String(round.roundNumber || ""));
-      appendKeyValue(roundSection, "Outcome", round.outcome || "Not recorded");
+      var roundSection = collapsibleSection("Round " + String(round.roundNumber || ""), true);
+      appendKeyValue(roundSection.body, "Outcome", round.outcome || "Not recorded");
 
       if (Array.isArray(round.messages) && round.messages.length > 0) {
         round.messages.forEach(function (message) {
@@ -1018,14 +1275,17 @@ function clientScript(): string {
           var meta = document.createElement("div");
           meta.className = "message-meta";
           var role = document.createElement("span");
+          role.className = "role-pill role-" + classToken(message.role || "agent");
           role.textContent = message.role || "agent";
           meta.appendChild(role);
           var time = document.createElement("span");
+          time.className = "timestamp";
           time.textContent = formatDateTime(message.timestamp);
           meta.appendChild(time);
           messageCard.appendChild(meta);
 
           var content = document.createElement("div");
+          content.className = "message-content";
           content.textContent = message.content || "";
           messageCard.appendChild(content);
 
@@ -1033,33 +1293,23 @@ function clientScript(): string {
             appendKeyValue(messageCard, "Alternative", message.proposedAlternative);
           }
 
-          roundSection.appendChild(messageCard);
+          roundSection.body.appendChild(messageCard);
         });
       } else {
-        roundSection.appendChild(emptyBlock("No messages recorded for this round."));
+        roundSection.body.appendChild(emptyBlock("No messages recorded for this round."));
       }
 
       if (Array.isArray(round.alternatives) && round.alternatives.length > 0) {
         var altHeading = document.createElement("h3");
         altHeading.textContent = "Alternatives";
-        roundSection.appendChild(altHeading);
+        roundSection.body.appendChild(altHeading);
 
         round.alternatives.forEach(function (alternative) {
-          var alt = document.createElement("div");
-          alt.className = "alt-card";
-          appendKeyValue(alt, "Label", alternative.label || alternative.id || "Alternative");
-          appendKeyValue(alt, "Description", alternative.description || "No description recorded.");
-          appendKeyValue(alt, "Rationale", alternative.rationale || "No rationale recorded.");
-          appendKeyValue(alt, "Proposed by", alternative.proposedBy || "Unknown");
-          appendKeyValue(alt, "Support", Array.isArray(alternative.supportedBy) ? alternative.supportedBy.join(", ") || "None" : "None");
-          if (typeof alternative.confidence === "number") {
-            appendKeyValue(alt, "Confidence", formatScore(alternative.confidence));
-          }
-          roundSection.appendChild(alt);
+          roundSection.body.appendChild(renderAlternative(alternative));
         });
       }
 
-      refs.tabContent.appendChild(roundSection);
+      refs.tabContent.appendChild(roundSection.details);
     });
   }
 
@@ -1067,7 +1317,7 @@ function clientScript(): string {
     var context = node.context || {};
 
     var prd = section("PRD");
-    appendPreOrEmpty(prd, context.prd, "No PRD recorded.");
+    appendTextOrEmpty(prd, context.prd, "No PRD recorded.");
     refs.tabContent.appendChild(prd);
 
     var acceptance = section("Acceptance Criteria");
@@ -1079,15 +1329,15 @@ function clientScript(): string {
     refs.tabContent.appendChild(architecture);
 
     var branch = section("Branch Decision");
-    appendPreOrEmpty(branch, context.branchDecision, "No branch decision recorded.");
+    appendTextOrEmpty(branch, context.branchDecision, "No branch decision recorded.");
     refs.tabContent.appendChild(branch);
 
     var spec = section("Implementation Spec");
-    appendPreOrEmpty(spec, context.implementationSpec, "No implementation spec recorded.");
+    appendTextOrEmpty(spec, context.implementationSpec, "No implementation spec recorded.");
     refs.tabContent.appendChild(spec);
 
     var tests = section("Test Strategy");
-    appendPreOrEmpty(tests, context.testStrategy, "No test strategy recorded.");
+    appendTextOrEmpty(tests, context.testStrategy, "No test strategy recorded.");
     refs.tabContent.appendChild(tests);
 
     var ancestors = section("Ancestor Summaries");
@@ -1144,7 +1394,7 @@ function clientScript(): string {
       appendKeyValue(score, "Tests", formatScore(node.score.testCoverage));
       appendKeyValue(score, "Intent", formatScore(node.score.intentAlignment));
       appendKeyValue(score, "Simplicity", formatScore(node.score.simplicity));
-      appendPreOrEmpty(score, node.score.rationale, "No rationale recorded.");
+      appendTextOrEmpty(score, node.score.rationale, "No rationale recorded.");
       refs.tabContent.appendChild(score);
     }
   }
@@ -1407,6 +1657,69 @@ function clientScript(): string {
     refs.showPrunedButton.textContent = state.showPruned ? "Hide pruned" : "Show pruned";
   }
 
+  function collapsibleSection(title, open) {
+    var details = document.createElement("details");
+    details.className = "section";
+    details.open = Boolean(open);
+
+    var summary = document.createElement("summary");
+    summary.textContent = title;
+    details.appendChild(summary);
+
+    var body = document.createElement("div");
+    body.className = "section-body";
+    details.appendChild(body);
+
+    return { details: details, body: body };
+  }
+
+  function renderAlternative(alternative) {
+    var alt = document.createElement("div");
+    alt.className = "alt-card";
+
+    var title = document.createElement("h4");
+    title.className = "alt-title";
+    title.textContent = alternative.label || alternative.id || "Alternative";
+    alt.appendChild(title);
+
+    var metrics = document.createElement("div");
+    metrics.className = "mini-metrics";
+    appendMiniMetric(metrics, "Proposed by", alternative.proposedBy || "Unknown");
+    appendMiniMetric(
+      metrics,
+      "Support",
+      Array.isArray(alternative.supportedBy) ? alternative.supportedBy.join(", ") || "None" : "None",
+    );
+    appendMiniMetric(
+      metrics,
+      "Confidence",
+      typeof alternative.confidence === "number" ? formatScore(alternative.confidence) : "n/a",
+    );
+    alt.appendChild(metrics);
+
+    appendField(alt, "Description", alternative.description || "No description recorded.");
+    appendField(alt, "Rationale", alternative.rationale || "No rationale recorded.");
+    return alt;
+  }
+
+  function appendMiniMetric(parent, label, value) {
+    var metric = document.createElement("div");
+    metric.className = "mini-metric";
+
+    var metricLabel = document.createElement("div");
+    metricLabel.className = "mini-metric-label";
+    metricLabel.textContent = label;
+    metric.appendChild(metricLabel);
+
+    var metricValue = document.createElement("div");
+    metricValue.className = "mini-metric-value";
+    metricValue.textContent = value;
+    metricValue.title = value;
+    metric.appendChild(metricValue);
+
+    parent.appendChild(metric);
+  }
+
   function appendChip(parent, text) {
     var chip = document.createElement("span");
     chip.className = "meta-chip";
@@ -1429,6 +1742,35 @@ function clientScript(): string {
     row.appendChild(val);
 
     parent.appendChild(row);
+  }
+
+  function appendField(parent, label, value, extraClassName) {
+    var field = document.createElement("div");
+    field.className = "field";
+
+    var fieldLabel = document.createElement("div");
+    fieldLabel.className = "field-label";
+    fieldLabel.textContent = label;
+    field.appendChild(fieldLabel);
+
+    var body = document.createElement("div");
+    body.className = "text-block" + (extraClassName ? " " + extraClassName : "");
+    body.textContent = value === undefined || value === null || value === "" ? "Not recorded" : String(value);
+    field.appendChild(body);
+
+    parent.appendChild(field);
+  }
+
+  function appendTextOrEmpty(parent, value, emptyText) {
+    if (value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0)) {
+      parent.appendChild(emptyBlock(emptyText));
+      return;
+    }
+
+    var body = document.createElement("div");
+    body.className = "text-block";
+    body.textContent = Array.isArray(value) ? value.join("\n") : String(value);
+    parent.appendChild(body);
   }
 
   function appendPreOrEmpty(parent, value, emptyText) {
@@ -1512,6 +1854,13 @@ function clientScript(): string {
       return text;
     }
     return text.slice(0, Math.max(0, length - 3)) + "...";
+  }
+
+  function classToken(value) {
+    return String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
   }
 
   function readableError(error) {

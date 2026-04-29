@@ -171,6 +171,9 @@ export class CodexExecutor {
     const sections = [
       `# Implementation Task\n`,
       `## Original Intent\n${ctx.originalIntent}\n`,
+      ctx.humanRevisionPrompt
+        ? `## Human Revision\nThe human reviewer added this steering instruction before implementation:\n${ctx.humanRevisionPrompt}\n`
+        : "",
       ctx.prd ? `## Product Requirements\n${ctx.prd}\n` : "",
       ctx.acceptanceCriteria?.length
         ? `## Acceptance Criteria\n${ctx.acceptanceCriteria.map((c) => `- ${c}`).join("\n")}\n`

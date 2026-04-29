@@ -105,4 +105,30 @@ describe("Synthesizer", () => {
     const userPrompt = callArgs.messages[1].content as string;
     expect(userPrompt).toContain("Redis vs Memcached");
   });
+
+  it("includes a human revision prompt in the synthesis prompt", async () => {
+    const mockCreate = vi.fn().mockResolvedValue({
+      choices: [{ message: { content: "# Synthesis" } }],
+      usage: { total_tokens: 100 },
+    });
+    const openai = {
+      chat: { completions: { create: mockCreate } },
+    } as unknown as OpenAI;
+    const synthesizer = new Synthesizer(openai, "gpt-4o", false);
+
+    await synthesizer.synthesize(
+      makeLeafNode({
+        context: {
+          originalIntent: "Research local-first options",
+          humanRevisionPrompt: "Prefer local-first storage.",
+          ancestorSummaries: [],
+        },
+      })
+    );
+
+    const callArgs = mockCreate.mock.calls[0][0];
+    const userPrompt = callArgs.messages[1].content as string;
+    expect(userPrompt).toContain("Human Revision");
+    expect(userPrompt).toContain("Prefer local-first storage.");
+  });
 });

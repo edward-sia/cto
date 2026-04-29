@@ -19,7 +19,7 @@ import ora from "ora";
 import { createInterface } from "node:readline/promises";
 import { TreeOrchestrator, DEFAULT_RUN_CONFIG } from "../orchestrator/orchestrator.js";
 import { FileStore } from "../persistence/file-store.js";
-import type { RunState, TreeNode, RunConfig } from "../types/index.js";
+import type { HumanPlanDecision, RunState, TreeNode, RunConfig } from "../types/index.js";
 import { AGENT_DISPLAY_NAMES } from "../types/index.js";
 import { startUiServer } from "../ui/server.js";
 import { estimateRunCost, formatCostEstimate, priceCodexUsage, priceLLMUsage } from "../utils/cost.js";
@@ -51,6 +51,7 @@ program
   .option("--cloud-attempts <n>", "Best-of-N attempts when using --cloud-env", "1")
   .option("--dry-run", "Skip all LLM and Codex calls — exercise tree shape only", false)
   .option("--ground-truth <spec>", "Inject verified domain facts (e.g. file:./facts.json, sample:./data.csv, openapi:./spec.yaml)")
+  .option("--interactive-plan", "Review candidate leaves before implementation", false)
   .option("-y, --yes", "Skip pre-run cost confirmation", false)
   .action(async (intent: string, opts) => {
     const dryRun = Boolean(opts.dryRun);
@@ -66,6 +67,7 @@ program
       workingDirectory: opts.workdir,
       tokenBudget: opts.tokenBudget ? parseInt(opts.tokenBudget, 10) : undefined,
       dryRun,
+      interactivePlan: Boolean(opts.interactivePlan),
       leafConcurrency: parseInt(opts.leafConcurrency, 10),
       pruneThreshold: parseFloat(opts.pruneThreshold),
       cloudEnv: opts.cloudEnv,
@@ -162,6 +164,18 @@ program
         onLeafScored: (nodeId, score) => {
           console.log(chalk.green(`\n🏆 [${nodeId.slice(0, 12)}] Score: ${score.composite}/10 — ${score.rationale.slice(0, 80)}`));
         },
+        onHumanPlanReview: async (node, state) => {
+          spinner.stop();
+          try {
+            return await reviewHumanPlan(node, state);
+          } finally {
+            spinner.start("Continuing orchestration...");
+          }
+        },
+        onHumanPlanApplied: (nodeId, decision) => {
+          const label = decision.action === "revise" ? `revise: ${decision.prompt}` : decision.action;
+          console.log(chalk.cyan(`\n🧭 [${nodeId.slice(0, 12)}] Human plan decision: ${label}`));
+        },
         onRunComplete: (state) => {
           spinner.stop();
           printResults(state);
@@ -178,6 +192,7 @@ program
     console.log(chalk.dim(`Working dir: ${opts.workdir}`));
     if (opts.cloudEnv) console.log(chalk.cyan(`Codex Cloud: env=${opts.cloudEnv}, attempts=${opts.cloudAttempts ?? 1}`));
     if (dryRun) console.log(chalk.yellow("Mode: DRY RUN — no LLM or Codex calls will be made"));
+    if (opts.interactivePlan) console.log(chalk.yellow("Interactive plan gate: enabled"));
     console.log();
 
     spinner.start("Initialising...");
@@ -286,12 +301,20 @@ program
   .argument("<run-id>", "Run ID to resume")
   .option("--dry-run", "Skip all LLM and Codex calls", false)
   .option("--leaf-concurrency <n>", "Override max parallel leaf executions on resume")
+  .option("--interactive-plan", "Enable interactive plan review on resume")
   .action(async (runId: string, opts) => {
     const dryRun = Boolean(opts.dryRun);
     const openai = makeOpenAIClient(dryRun);
     const orchestrator = new TreeOrchestrator(openai, {
-      dryRun,
+      ...(dryRun ? { dryRun } : {}),
       ...(opts.leafConcurrency ? { leafConcurrency: parseInt(opts.leafConcurrency, 10) } : {}),
+      ...(opts.interactivePlan ? { interactivePlan: true } : {}),
+    }, {
+      onHumanPlanReview: reviewHumanPlan,
+      onHumanPlanApplied: (nodeId, decision) => {
+        const label = decision.action === "revise" ? `revise: ${decision.prompt}` : decision.action;
+        console.log(chalk.cyan(`\n🧭 [${nodeId.slice(0, 12)}] Human plan decision: ${label}`));
+      },
     });
     console.log(chalk.blue(`\nResuming run ${runId}...\n`));
     try {
@@ -311,6 +334,50 @@ async function confirm(question: string): Promise<boolean> {
   try {
     const answer = await rl.question(`\n${question} [y/N] `);
     return /^y(es)?$/i.test(answer.trim());
+  } finally {
+    rl.close();
+  }
+}
+
+async function reviewHumanPlan(node: TreeNode, state: RunState): Promise<HumanPlanDecision> {
+  if (!process.stdin.isTTY) {
+    throw new Error("Interactive plan mode requires an interactive terminal.");
+  }
+
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const path = getPathLabelsForNode(state.root, node.id).join(" → ") || "(root)";
+    const summary = node.debate?.summary || node.branchDescription || "No summary recorded.";
+    console.log(chalk.bold.white("\n🧭 Interactive Plan Review"));
+    console.log(`${chalk.bold("Leaf:")}    ${node.id.slice(0, 12)} (depth ${node.depth})`);
+    console.log(`${chalk.bold("Path:")}    ${path}`);
+    console.log(`${chalk.bold("Summary:")} ${summary.slice(0, 500)}${summary.length > 500 ? "…" : ""}`);
+
+    while (true) {
+      const raw = await rl.question("\nChoose: [p]roceed, [r]evise once, [k]ill  ");
+      const answer = raw.trim().toLowerCase();
+      if (answer === "p" || answer === "proceed") return { action: "proceed" };
+
+      if (answer === "r" || answer === "revise") {
+        while (true) {
+          const prompt = (await rl.question("Revision prompt: ")).trim();
+          if (prompt) return { action: "revise", prompt };
+          console.log(chalk.yellow("Revision prompt cannot be empty."));
+        }
+      }
+
+      if (answer === "k" || answer === "kill") {
+        if (state.leafNodeIds.length <= 1) {
+          const confirmKill = await rl.question(
+            chalk.yellow("This is the final executable leaf. Kill it and pause the run? [y/N] ")
+          );
+          if (!/^y(es)?$/i.test(confirmKill.trim())) continue;
+        }
+        return { action: "kill" };
+      }
+
+      console.log(chalk.yellow("Please choose proceed, revise, or kill."));
+    }
   } finally {
     rl.close();
   }
@@ -412,6 +479,25 @@ function printTree(node: TreeNode, prefix: string, isLast = true): void {
   for (let i = 0; i < node.children.length; i++) {
     printTree(node.children[i], childPrefix, i === node.children.length - 1);
   }
+}
+
+function getPathLabelsForNode(root: TreeNode, targetId: string): string[] {
+  const path: string[] = [];
+  const visit = (node: TreeNode): boolean => {
+    if (node.id === targetId) {
+      if (node.branchLabel) path.push(node.branchLabel);
+      return true;
+    }
+    for (const child of node.children) {
+      if (visit(child)) {
+        if (node.branchLabel) path.unshift(node.branchLabel);
+        return true;
+      }
+    }
+    return false;
+  };
+  visit(root);
+  return path;
 }
 
 function timeDiff(start: string, end: string): string {

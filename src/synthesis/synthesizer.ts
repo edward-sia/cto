@@ -51,6 +51,11 @@ export class Synthesizer {
     const { context, debate } = node;
     const sections: string[] = [`Original intent: ${context.originalIntent}`];
 
+    if (context.humanRevisionPrompt) {
+      sections.push(
+        `## Human Revision\nThe human reviewer added this steering instruction before implementation:\n${context.humanRevisionPrompt}`
+      );
+    }
     if (context.prd) sections.push(`## PRD\n${context.prd}`);
     if (context.acceptanceCriteria?.length) {
       sections.push(`## Acceptance Criteria\n${context.acceptanceCriteria.map((c) => `- ${c}`).join("\n")}`);

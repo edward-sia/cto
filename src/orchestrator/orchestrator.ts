@@ -19,6 +19,7 @@ import type {
   LLMUsage,
   TaskAnalysis,
   DomainFacts,
+  HumanPlanDecision,
 } from "../types/index.js";
 import { addUsage, emptyUsage } from "../utils/usage.js";
 import { AGENT_DEFINITIONS } from "../agents/definitions.js";
@@ -53,6 +54,7 @@ export const DEFAULT_RUN_CONFIG: RunConfig = {
   workingDirectory: process.cwd(),
   phaseDepths: DEFAULT_PHASE_DEPTHS,
   dryRun: false,
+  interactivePlan: false,
   leafConcurrency: 4,
   pruneThreshold: 0.5,
 };
@@ -82,6 +84,8 @@ export interface OrchestratorCallbacks {
   onPruned?: (parentId: string, prunedCount: number, threshold: number) => void;
   onLeafExecuting?: (nodeId: string) => void;
   onLeafScored?: (nodeId: string, score: JudgeScore) => void;
+  onHumanPlanReview?: (node: TreeNode, state: RunState) => Promise<HumanPlanDecision>;
+  onHumanPlanApplied?: (nodeId: string, decision: HumanPlanDecision) => void;
   onRunComplete?: (state: RunState) => void;
   onError?: (nodeId: string, error: Error) => void;
 }
@@ -97,6 +101,7 @@ export class TreeOrchestrator {
   private synthesizer: Synthesizer;
   private callbacks: OrchestratorCallbacks;
   private runState!: RunState;
+  private configOverrides: Partial<RunConfig>;
 
   constructor(
     openai: OpenAI,
@@ -104,6 +109,7 @@ export class TreeOrchestrator {
     callbacks: OrchestratorCallbacks = {}
   ) {
     this.openai = openai;
+    this.configOverrides = config;
     this.config = { ...DEFAULT_RUN_CONFIG, ...config };
     this.store = new FileStore();
     this.codex = new CodexExecutor(this.config.workingDirectory, this.config.dryRun, {
@@ -163,18 +169,11 @@ export class TreeOrchestrator {
 
     try {
       await this.processNode(root);
-      this.runState.leafNodeIds = this.collectLeafIds(root);
-      if (this.runState.runMode === "implementation") {
-        await this.executeLeaves(root);
-        await this.judgeLeaves(root);
-        this.accumulateLLMUsage(this.judge.llmUsage);
-        this.runState.rankedResults = this.rankResults(root);
-      } else {
-        await this.synthesizeLeaves(root);
-        this.accumulateLLMUsage(this.synthesizer.llmUsage);
+      await this.completeAfterTree(root);
+      if (this.runState.status === "running") {
+        this.runState.status = "completed";
+        this.runState.completedAt = new Date().toISOString();
       }
-      this.runState.status = "completed";
-      this.runState.completedAt = new Date().toISOString();
     } catch (error) {
       this.runState.status = "failed";
       throw error;
@@ -191,17 +190,94 @@ export class TreeOrchestrator {
     const state = await this.store.load(runId);
     if (!state) throw new Error(`Run ${runId} not found`);
     this.runState = state;
-    this.config = state.config;
+    this.config = { ...DEFAULT_RUN_CONFIG, ...state.config, ...this.configOverrides };
+    this.runState.config = this.config;
 
     const pendingNodes = this.findPendingNodes(state.root);
     for (const node of pendingNodes) {
       await this.processNode(node);
     }
 
-    this.runState.status = "completed";
-    this.runState.completedAt = new Date().toISOString();
+    this.runState.status = "running";
+    await this.completeAfterTree(state.root);
+    if (this.runState.status === "running") {
+      this.runState.status = "completed";
+      this.runState.completedAt = new Date().toISOString();
+    }
     await this.store.save(this.runState);
     return this.runState;
+  }
+
+  private async completeAfterTree(root: TreeNode): Promise<void> {
+    this.runState.leafNodeIds = this.collectLeafIds(root);
+    if (this.config.interactivePlan) {
+      await this.runInteractivePlanGate(root);
+      this.runState.leafNodeIds = this.collectLeafIds(root);
+    }
+
+    if (this.runState.leafNodeIds.length === 0) {
+      this.runState.status = "paused";
+      await this.store.save(this.runState);
+      return;
+    }
+
+    if (this.runState.runMode === "implementation") {
+      await this.executeLeaves(root);
+      await this.judgeLeaves(root);
+      this.accumulateLLMUsage(this.judge.llmUsage);
+      this.runState.rankedResults = this.rankResults(root);
+    } else {
+      await this.synthesizeLeaves(root);
+      this.accumulateLLMUsage(this.synthesizer.llmUsage);
+    }
+  }
+
+  private async runInteractivePlanGate(root: TreeNode): Promise<void> {
+    if (!this.callbacks.onHumanPlanReview) {
+      throw new Error("Interactive plan mode requires an onHumanPlanReview callback.");
+    }
+
+    const reviewLeaves = this.collectLeaves(root).filter((node) =>
+      !node.humanIntervention && !this.isHumanRevisionDescendant(root, node)
+    );
+
+    for (const leaf of reviewLeaves) {
+      if (leaf.status === "pruned" || leaf.humanIntervention) continue;
+      const decision = await this.callbacks.onHumanPlanReview(leaf, this.runState);
+      await this.applyHumanPlanDecision(leaf, decision);
+      this.callbacks.onHumanPlanApplied?.(leaf.id, decision);
+      this.runState.leafNodeIds = this.collectLeafIds(root);
+      await this.store.save(this.runState);
+    }
+  }
+
+  private async applyHumanPlanDecision(node: TreeNode, decision: HumanPlanDecision): Promise<void> {
+    const createdAt = new Date().toISOString();
+    node.humanIntervention = { ...decision, createdAt };
+    node.updatedAt = createdAt;
+
+    if (decision.action === "kill") {
+      node.status = "pruned";
+      return;
+    }
+
+    if (decision.action === "proceed") return;
+
+    const prompt = decision.prompt.trim();
+    const childContext: NodeContext = {
+      ...node.context,
+      humanRevisionPrompt: prompt,
+      ancestorSummaries: [
+        ...node.context.ancestorSummaries,
+        `Human revision before implementation: ${prompt}`,
+      ],
+    };
+    const child = this.createNode(node.id, node.depth + 1, childContext);
+    child.branchLabel = "human-revision";
+    child.branchDescription = prompt;
+    node.children.push(child);
+    this.callbacks.onNodeCreated?.(child);
+    await this.processNode(child);
   }
 
   private async processNode(node: TreeNode): Promise<void> {
@@ -447,8 +523,7 @@ export class TreeOrchestrator {
   }
 
   private collectLeafIds(node: TreeNode): string[] {
-    if (this.isLeaf(node)) return [node.id];
-    return node.children.flatMap((c) => this.collectLeafIds(c));
+    return this.collectLeaves(node).map((leaf) => leaf.id);
   }
 
   private findPendingNodes(node: TreeNode): TreeNode[] {
@@ -468,8 +543,31 @@ export class TreeOrchestrator {
   }
 
   private collectLeaves(node: TreeNode): TreeNode[] {
+    if (node.status === "pruned") return [];
     if (this.isLeaf(node)) return [node];
     return node.children.flatMap((c) => this.collectLeaves(c));
+  }
+
+  private isHumanRevisionDescendant(root: TreeNode, node: TreeNode): boolean {
+    let currentParentId = node.parentId;
+    while (currentParentId) {
+      const parent = this.findNode(root, currentParentId);
+      if (!parent) return false;
+      if (parent.humanIntervention?.action === "revise" || parent.branchLabel === "human-revision") {
+        return true;
+      }
+      currentParentId = parent.parentId;
+    }
+    return false;
+  }
+
+  private findNode(root: TreeNode, targetId: string): TreeNode | undefined {
+    if (root.id === targetId) return root;
+    for (const child of root.children) {
+      const found = this.findNode(child, targetId);
+      if (found) return found;
+    }
+    return undefined;
   }
 
   private getPathLabels(root: TreeNode, targetId: string): string[] {

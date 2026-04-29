@@ -92,10 +92,13 @@ Options:
       --cloud-attempts <n>   Best-of-N attempts when --cloud-env is set
                              (default: 1)
       --dry-run              No LLM or Codex calls — exercise tree shape only
+      --interactive-plan     Review candidate leaves before implementation
   -y, --yes                  Skip pre-run cost confirmation
 ```
 
 Each leaf runs in its own subdirectory: `<workdir>/<node-id>/`. Solutions are independent and can be diffed against each other.
+
+Use `--interactive-plan` when you want a human checkpoint before leaf execution. CTO will pause on each candidate leaf and let you proceed, revise once with a new prompt that creates a debated child branch, or kill the branch before Codex execution.
 
 ### `list` — show all saved runs
 
@@ -132,7 +135,7 @@ If `run-id` is provided, the UI opens that run directly. Use `--no-open` to prin
 ### `resume <run-id>` — continue a paused or failed run
 
 ```
-cto resume run-abc123 [--dry-run] [--leaf-concurrency <n>]
+cto resume run-abc123 [--dry-run] [--leaf-concurrency <n>] [--interactive-plan]
 ```
 
 Press **Ctrl+C** at any time during a run to pause it — state is saved and you can resume later.

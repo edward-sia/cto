@@ -529,6 +529,9 @@ ${decomp.feasibilityFlags.map((f) => `- ${f}`).join("\n") || "- (none)"}`
 
   const contextSummary = [
     `## Original Intent\n${input.context.originalIntent}`,
+    input.context.humanRevisionPrompt
+      ? `## Human Revision\nThe human reviewer added this steering instruction before implementation:\n${input.context.humanRevisionPrompt}`
+      : "",
     domainFactsSection,
     decompositionSection,
     input.context.prd ? `## PRD\n${input.context.prd}` : "",

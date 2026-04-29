@@ -106,6 +106,17 @@ export interface DebateTranscript {
   contextUpdates: Partial<NodeContext>;
 }
 
+export interface HumanIntervention {
+  action: "proceed" | "revise" | "kill";
+  prompt?: string;
+  createdAt: string;
+}
+
+export type HumanPlanDecision =
+  | { action: "proceed" }
+  | { action: "revise"; prompt: string }
+  | { action: "kill" };
+
 export interface IntentDecomposition {
   loadBearingClaims: string[];
   undefinedTerms: Array<{ term: string; needsResolution: string }>;
@@ -124,6 +135,7 @@ export interface NodeContext {
   acceptanceCriteria?: string[];
   architectureDecisions?: string[];
   branchDecision?: string;
+  humanRevisionPrompt?: string;
   implementationSpec?: string;
   testStrategy?: string;
   ancestorSummaries: string[];
@@ -179,6 +191,7 @@ export interface TreeNode {
   children: TreeNode[];
   branchLabel: string;
   branchDescription: string;
+  humanIntervention?: HumanIntervention;
   executionResult?: CodexExecutionResult;
   score?: JudgeScore;
   createdAt: string;
@@ -194,6 +207,7 @@ export interface RunConfig {
   workingDirectory: string;
   phaseDepths: Record<TreePhase, [number, number]>;
   dryRun: boolean;
+  interactivePlan: boolean;
   tokenBudget?: number;
   leafConcurrency: number;
   pruneThreshold: number;

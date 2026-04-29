@@ -51,7 +51,7 @@ export const DEFAULT_RUN_CONFIG: RunConfig = {
   phaseDepths: DEFAULT_PHASE_DEPTHS,
   dryRun: false,
   leafConcurrency: 4,
-  pruneThreshold: 0,
+  pruneThreshold: 0.5,
 };
 
 async function runWithConcurrency<T>(
@@ -231,8 +231,10 @@ export class TreeOrchestrator {
       const lastRound = transcript.rounds[transcript.rounds.length - 1];
       const allAlternatives = lastRound.alternatives;
       const threshold = this.config.pruneThreshold;
+      const effectiveScore = (a: { confidence: number; relevanceToIntent: number }) =>
+        a.confidence * a.relevanceToIntent;
       const alternatives = threshold > 0
-        ? allAlternatives.filter((a) => a.confidence >= threshold)
+        ? allAlternatives.filter((a) => effectiveScore(a) >= threshold)
         : allAlternatives;
       const pruned = allAlternatives.length - alternatives.length;
       if (pruned > 0) {

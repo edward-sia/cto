@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import OpenAI from "openai";
 import { TreeOrchestrator } from "../../src/orchestrator/orchestrator.js";
+import type { Alternative } from "../../src/types/index.js";
 
 describe("TreeOrchestrator", () => {
   it("stores dry-run task analysis and reports it through callbacks", async () => {
@@ -63,5 +64,34 @@ describe("TreeOrchestrator", () => {
     expect(agents).toContain("product-manager");
     expect(agents).toContain("business-analyst");
     expect(agents).toContain("qa-engineer");
+  });
+
+  it("prunes alternatives whose confidence * relevanceToIntent is below threshold", () => {
+    const alts: Alternative[] = [
+      {
+        id: "a",
+        label: "On-topic high",
+        description: "",
+        proposedBy: "tech-lead",
+        supportedBy: [],
+        rationale: "",
+        confidence: 0.9,
+        relevanceToIntent: 0.9,
+      },
+      {
+        id: "b",
+        label: "Off-topic",
+        description: "",
+        proposedBy: "business-analyst",
+        supportedBy: [],
+        rationale: "",
+        confidence: 0.9,
+        relevanceToIntent: 0.2,
+      },
+    ];
+    const threshold = 0.5;
+    const effective = (a: Alternative) => a.confidence * a.relevanceToIntent;
+    const kept = alts.filter((a) => effective(a) >= threshold);
+    expect(kept.map((a) => a.id)).toEqual(["a"]);
   });
 });

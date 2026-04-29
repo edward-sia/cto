@@ -1,6 +1,19 @@
 # Cambrian Tree Orchestrator (CTO)
 
-Tree-of-Thought agent orchestration for software development. A CLI tool where specialised agents debate solutions in round-table format, branch when alternatives emerge, optionally pause for a human plan review, execute leaf paths through the execution layer, rank results with an LLM judge, and visualize saved runs in a local browser UI.
+![Cambrian Tree Orchestrator hero image: a dark loading-screen past erupting into branching AI agent forms](docs/assets/cambrian-hero.png)
+
+Cambrian turns a single software intent into an explored solution tree. A core panel plus intent-selected specialists debate the problem, branch when grounded alternatives appear, pause for human plan review when requested, execute surviving leaf paths through Codex, score the results with an LLM judge, and save the whole run for inspection in a local browser UI.
+
+It is built for the moment when "ask one agent once" stops being enough: when you want competing implementation strategies, visible trade-offs, resumable execution, and a ranked set of candidate solutions instead of a single opaque answer.
+
+## Highlights
+
+- **Round-table agent debate** — core delivery roles and optional specialists critique the intent from different angles.
+- **Organic branching** — the moderator forks only when agents surface meaningfully different, grounded implementation paths.
+- **Human plan gate** — review candidate leaves before execution, revise one branch, or kill weak directions early.
+- **Parallel leaf execution** — run multiple candidate implementations concurrently through the execution layer.
+- **LLM judging** — rank results across functional completeness, architecture, tests, fit, and simplicity.
+- **Saved-run UI** — inspect the tree, debate history, context updates, execution output, and scores in a local browser.
 
 ## How It Works
 
@@ -12,7 +25,7 @@ Tree-of-Thought agent orchestration for software development. A CLI tool where s
 6. Surviving leaf nodes are submitted to OpenAI Codex for implementation
 7. An LLM judge scores each solution on six dimensions and ranks them
 
-See [docs/architecture.md](docs/architecture.md) for diagrams.
+See [docs/architecture.md](docs/architecture.md) for the system diagrams and layer-by-layer architecture.
 
 ## Prerequisites
 

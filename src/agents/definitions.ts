@@ -523,8 +523,13 @@ ${decomp.knownUnknowns.map((u) => `- ${u}`).join("\n") || "- (none)"}
 ${decomp.feasibilityFlags.map((f) => `- ${f}`).join("\n") || "- (none)"}`
     : "";
 
+  const domainFactsSection = input.context.domainFacts
+    ? renderDomainFacts(input.context.domainFacts)
+    : "";
+
   const contextSummary = [
     `## Original Intent\n${input.context.originalIntent}`,
+    domainFactsSection,
     decompositionSection,
     input.context.prd ? `## PRD\n${input.context.prd}` : "",
     input.context.acceptanceCriteria?.length
@@ -581,6 +586,52 @@ ALTERNATIVE [label]: [description] — RATIONALE: [why this deserves its own bra
 Emit CONTEXT_UPDATE lines only for concrete, new additions not already present in the context above.`;
 
   return { system: agent.systemPrompt, user };
+}
+
+function renderDomainFacts(facts: import("../types/index.js").DomainFacts): string {
+  const lines: string[] = [
+    "## Verified Domain Ground Truth",
+    "",
+    "> These facts have been verified against real data or documentation. Treat them as hard constraints, not assumptions.",
+    "",
+    `**Domain:** ${facts.domain}`,
+  ];
+
+  if (facts.schemas?.length) {
+    lines.push("", "**Data Schemas:**");
+    for (const schema of facts.schemas) {
+      const fieldList = schema.fields
+        .map((f) => `${f.name} (${f.type}${f.required ? ", required" : ""})`)
+        .join(", ");
+      lines.push(`- ${schema.name}: ${fieldList}`);
+    }
+  }
+
+  if (facts.apiEndpoints?.length) {
+    lines.push("", "**API Endpoints:**");
+    for (const ep of facts.apiEndpoints) {
+      lines.push(`- ${ep.method} ${ep.path}: ${ep.description}`);
+    }
+  }
+
+  if (facts.constraints.length) {
+    lines.push("", "**Verified Constraints:**");
+    for (const c of facts.constraints) lines.push(`- ${c}`);
+  }
+
+  if (facts.knownAbsences.length) {
+    lines.push(
+      "",
+      "**Known Absences (these do NOT exist — do not design solutions that assume they do):**"
+    );
+    for (const a of facts.knownAbsences) lines.push(`- ${a}`);
+  }
+
+  if (facts.rawContext) {
+    lines.push("", "**Additional Context:**", facts.rawContext);
+  }
+
+  return lines.join("\n");
 }
 
 // ─── Response Parser ─────────────────────────────────────────────────────────

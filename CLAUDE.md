@@ -48,6 +48,8 @@ src/
 
 ```bash
 npm install                    # Install deps
+npm run docs:check             # Ensure code-impacting changes update README/AGENTS/CLAUDE/docs
+npm test                       # docs:check + Vitest
 npx tsx src/cli/index.ts run "<intent>" --depth 3 --branching 2  # Run
 npx tsx src/cli/index.ts run "<intent>" --verify "npm test" --verify "npm run typecheck"  # Run leaf checks
 npx tsx src/cli/index.ts run "<intent>" --prune-schedule "0:0.45,2:0.7,4:0.85"  # Depth-aware pruning
@@ -129,6 +131,11 @@ npx tsx src/cli/index.ts resume <run-id>  # Resume
 - [x] Fitness-aware display — final CLI summary, `cto tree`, saved-run list, tree badges, and node inspector prefer fitness when present while preserving judge details.
 - [x] Dry-run/cloud safeguards — dry-runs skip verification; Codex Cloud submissions record that local verification waits until cloud tasks are applied locally.
 
+### Documentation impact guard ✅
+- [x] `npm run docs:check` compares branch/worktree changes against the base branch and fails when code-impacting files change without `README.md`, `AGENTS.md`, `CLAUDE.md`, or `docs/**` updates.
+- [x] `npm test` runs `docs:check` before Vitest so documentation drift is caught in the normal verification loop.
+- [x] `DOCS_IMPACT=none npm run docs:check` is the explicit escape hatch for genuinely mechanical changes with no user-facing, agent-facing, or architecture impact.
+
 ### Interactive plan gate ✅
 - [x] `--interactive-plan` pauses after debate traversal and before implementation or synthesis.
 - [x] Human can proceed, kill a branch, or revise once with a new prompt.
@@ -151,6 +158,7 @@ npx tsx src/cli/index.ts resume <run-id>  # Resume
 - Types go in `src/types/index.ts`
 - Error handling: wrap LLM calls in try/catch, fallback gracefully, never crash the tree traversal
 - Console output: use chalk for colour, ora for spinners, keep output readable
+- Code-impacting changes should update `README.md`, `AGENTS.md`, `CLAUDE.md`, or `docs/**`; `npm test` enforces this through `npm run docs:check`
 
 ## Environment Variables
 
@@ -167,6 +175,7 @@ Use vitest. Current coverage includes saved-run UI helpers and server behavior:
 - interactive plan gate behavior in `tests/orchestrator/orchestrator.test.ts`
 - prompt propagation for human revisions in `tests/agents/definitions.test.ts`, `tests/execution/codex-client.test.ts`, and `tests/synthesis/synthesizer.test.ts`
 - intent decomposition/dossier, pruning schedule parsing, verification runner, fitness scoring, and fitness-aware UI summaries
+- documentation drift guard behavior in `tests/docs/impact-check.test.ts`
 
 When adding more:
 - Unit tests for `parseAgentResponse`, `buildAgentPrompt`, moderator JSON parsing

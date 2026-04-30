@@ -52,6 +52,16 @@ npm link    # puts the `cto` bin on your PATH
 
 For development without installing the bin, replace `cto` with `npx tsx src/cli/index.ts` in any of the commands below — both work identically.
 
+## Development Checks
+
+```bash
+npm run docs:check   # Fail when code-impacting changes omit README/AGENTS/CLAUDE/docs updates
+npm run typecheck    # TypeScript verification
+npm test             # docs:check + Vitest
+```
+
+`docs:check` compares the branch and working tree against the base branch. If files under `src/`, `tests/`, `scripts/`, package metadata, or workflow/config files change, at least one of `README.md`, `AGENTS.md`, `CLAUDE.md`, or `docs/**` must change too. For a truly mechanical change with no user-facing, agent-facing, or architecture impact, run the check with `DOCS_IMPACT=none`.
+
 ## Quick Start
 
 ```bash
@@ -329,6 +339,7 @@ When interactive planning is enabled, `TreeNode.humanIntervention` records `proc
 | Browser plan review controls | ✅ Complete |
 | Codex usage reporting in CLI and UI | ✅ Complete |
 | Evolutionary foundation — intent dossier, verification, fitness ranking, progressive pruning | ✅ Complete |
+| Documentation impact guard | ✅ Complete |
 
 **Phase 2 delivered:** Zod validation on all LLM responses, exponential-backoff retry (3 attempts, 1s/2s/4s), token budget tracking with warnings, graceful Ctrl+C shutdown with state save.
 
@@ -339,6 +350,8 @@ When interactive planning is enabled, `TreeNode.humanIntervention` records `proc
 **Latest orchestration updates:** CTO now decomposes intent before debate, classifies runs as implementation or exploration, selects specialists dynamically, supports verified `--ground-truth` providers (`file:`, `sample:`, `openapi:`), and synthesizes exploration leaves without Codex execution.
 
 **Evolutionary foundation delivered:** CTO now builds an intent dossier before debate, supports repeatable post-leaf verification commands, stores verification summaries in run state, ranks implementations by evidence-aware fitness, displays fitness-aware scores in CLI and UI, and supports depth-aware pruning schedules via `--prune-schedule`.
+
+**Documentation impact guard delivered:** `npm test` now runs `npm run docs:check` before Vitest. Code-impacting diffs must update `README.md`, `AGENTS.md`, `CLAUDE.md`, or `docs/**`, with `DOCS_IMPACT=none` available only for explicitly no-docs-impact changes.
 
 **Interactive plan gate delivered:** `--interactive-plan` pauses after debate traversal and before leaf execution or synthesis. The human can proceed, revise once with a new prompt that creates a debated `human-revision` child, or kill a branch. Decisions persist into run state and resume without re-prompting already-reviewed leaves. `--ui-review` exposes the same decision flow in the saved-run UI.
 

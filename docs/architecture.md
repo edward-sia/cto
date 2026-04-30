@@ -242,6 +242,7 @@ src/
 ├── cli/index.ts              # CLI entry (commander) — run, list, show, tree, ui, resume
 ├── types/index.ts            # All shared types (TreeNode, RunConfig, HumanIntervention, JudgeScore, …)
 ├── schemas/index.ts          # Zod schemas for LLM response validation
+├── docs/impact-check.ts      # Documentation drift guard used by npm run docs:check
 ├── analyzer/
 │   ├── intent-decomposer.ts  # Extract load-bearing claims, unknowns, and feasibility flags
 │   ├── intent-dossier.ts     # Build the stable goal / acceptance / risk dossier
@@ -263,6 +264,24 @@ src/
     ├── run-summary.ts        # RunState → run list summary
     └── inspector.ts          # TreeNode → inspector view model
 ```
+
+## Documentation Impact Guard
+
+`npm run docs:check` prevents code/documentation drift in the normal development loop. It collects committed branch changes against the base branch plus staged, unstaged, and untracked files. If any code-impacting path changes without a matching documentation path, the command fails before Vitest.
+
+Code-impacting paths include `src/**`, `tests/**`, `scripts/**`, package metadata, TypeScript/Vitest/ESLint config, and workflow files. Documentation paths include `README.md`, `AGENTS.md`, `CLAUDE.md`, and `docs/**`.
+
+```mermaid
+flowchart LR
+    Diff["Changed files"] --> Classify["Classify paths"]
+    Classify --> Code{"Code-impacting?"}
+    Code -- no --> Pass["Pass"]
+    Code -- yes --> Docs{"Docs changed?"}
+    Docs -- yes --> Pass
+    Docs -- no --> Fail["Fail docs:check"]
+```
+
+For a genuinely mechanical change with no user-facing, agent-facing, or architecture impact, `DOCS_IMPACT=none npm run docs:check` is the explicit override. The override is intentionally noisy so skipping documentation is a deliberate choice.
 
 ## Retry & Resilience
 

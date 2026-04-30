@@ -40,13 +40,7 @@ export class VerificationRunner {
       let stderr = "";
       let timedOut = false;
       let settled = false;
-      let timeout: ReturnType<typeof setTimeout> | undefined;
       let hardKillTimeout: ReturnType<typeof setTimeout> | undefined;
-
-      const clearTimers = () => {
-        if (timeout) clearTimeout(timeout);
-        if (hardKillTimeout) clearTimeout(hardKillTimeout);
-      };
 
       const killChild = (child: ChildProcessWithoutNullStreams, signal: NodeJS.Signals) => {
         if (child.pid) {
@@ -80,14 +74,7 @@ export class VerificationRunner {
         return;
       }
 
-      const settle = (result: VerificationResult) => {
-        if (settled) return;
-        settled = true;
-        clearTimers();
-        resolve(result);
-      };
-
-      timeout = setTimeout(() => {
+      const timeout = setTimeout(() => {
         timedOut = true;
         stderr = appendTruncated(stderr, `Command timed out after ${command.timeoutMs}ms\n`);
         killChild(child, "SIGTERM");
@@ -95,6 +82,18 @@ export class VerificationRunner {
           if (!settled) killChild(child, "SIGKILL");
         }, HARD_KILL_DELAY_MS);
       }, command.timeoutMs);
+
+      const clearTimers = () => {
+        clearTimeout(timeout);
+        if (hardKillTimeout) clearTimeout(hardKillTimeout);
+      };
+
+      const settle = (result: VerificationResult) => {
+        if (settled) return;
+        settled = true;
+        clearTimers();
+        resolve(result);
+      };
 
       child.stdout?.on("data", (chunk: Buffer) => {
         stdout = appendTruncated(stdout, chunk);

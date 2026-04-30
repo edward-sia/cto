@@ -10,7 +10,7 @@ Tree-of-Thought agent orchestration for software development, with leaf executio
 Interface: CLI + saved-run UI (src/cli/, src/ui/) — commands, local browser viewer
 Layer 1: Orchestrator (src/orchestrator/) — tree traversal, branching, state
 Layer 2: Agent Panel (src/agents/, src/debate/) — round-table debate engine
-Layer 3: Execution (src/execution/, src/judge/) — Codex SDK + LLM scoring
+Layer 3: Execution (src/execution/, src/judge/) — Codex SDK + provider-backed LLM scoring
 ```
 
 ## Tech Stack
@@ -18,6 +18,7 @@ Layer 3: Execution (src/execution/, src/judge/) — Codex SDK + LLM scoring
 - **Language:** TypeScript (ESM, NodeNext modules)
 - **Runtime:** Node.js 18+
 - **Key deps:** openai, @openai/codex-sdk, commander, chalk, ora, nanoid, zod
+- **LLM providers:** OpenAI-compatible provider layer for OpenAI, OpenRouter, Google Gemini, and DeepSeek
 - **Persistence:** JSON files in `.cambrian-tree/<run-id>/state.json`
 - **CLI framework:** Commander.js
 - **UI:** Dependency-free local HTTP server + browser shell in `src/ui/`
@@ -31,6 +32,7 @@ src/
 ├── schemas/index.ts          # Zod schemas for LLM response validation
 ├── utils/retry.ts            # Exponential-backoff retry wrapper
 ├── utils/cost.ts             # Pre-run token/USD estimator
+├── providers/llm-provider.ts # OpenAI-compatible provider registry + client factory
 ├── agents/definitions.ts     # Agent system prompts + role configs
 ├── debate/engine.ts          # Round-table debate engine
 ├── orchestrator/orchestrator.ts  # Main tree orchestration loop
@@ -45,6 +47,9 @@ src/
 ```bash
 npm install                    # Install deps
 npx tsx src/cli/index.ts run "<intent>" --depth 3 --branching 2  # Run
+npx tsx src/cli/index.ts run "<intent>" --provider openrouter  # Run debate/judge via OpenRouter
+npx tsx src/cli/index.ts run "<intent>" --provider gemini  # Run debate/judge via Google Gemini
+npx tsx src/cli/index.ts run "<intent>" --provider deepseek  # Run debate/judge via DeepSeek
 npx tsx src/cli/index.ts run "<intent>" --interactive-plan  # Run with human review before leaf execution
 npx tsx src/cli/index.ts list  # List runs
 npx tsx src/cli/index.ts show <run-id>  # Show results
@@ -67,6 +72,20 @@ npx tsx src/cli/index.ts resume <run-id>  # Resume
 10. Results ranked by weighted composite score
 11. Saved runs can be inspected visually with `cto ui`
 
+## LLM Provider Support
+
+Debate, analysis, exploration synthesis, and judge calls use a configurable OpenAI-compatible LLM client. Leaf implementation still uses Codex unless the run is in exploration mode or `--dry-run`.
+
+Provider flags:
+- `--provider openai` uses `OPENAI_API_KEY` and defaults to `gpt-4o`
+- `--provider openrouter` uses `OPENROUTER_API_KEY` and defaults to `qwen/qwen3-coder:free`
+- `--provider gemini` uses `GEMINI_API_KEY` and defaults to `gemini-3-flash-preview`
+- `--provider deepseek` uses `DEEPSEEK_API_KEY` and defaults to `deepseek-v4-pro`
+- `--model <model>` overrides the provider default for both reasoning and judge calls
+- `--base-url <url>` and `--api-key-env <name>` override the provider registry, useful for proxies or alternate accounts
+
+Provider metadata lives in `src/providers/llm-provider.ts`; persisted runs store provider, model, base URL, and API-key env in `RunConfig`. `cto resume` reuses the saved provider settings unless explicitly overridden.
+
 ## Key Design Patterns
 
 - **Branching is organic:** Agents surface alternatives via their debate contributions. The moderator (separate LLM call) detects divergence and forks. No hard-coded branching rules.
@@ -79,6 +98,8 @@ npx tsx src/cli/index.ts resume <run-id>  # Resume
 ## Current Status
 
 **Phases 1–4, interactive plan gate, and saved-run UI complete.** The CLI runs end-to-end with parallel leaf execution, pre-run cost estimation, branch pruning by moderator confidence, optional human review before execution, Codex usage breakdown, and a local browser UI for inspecting saved trees. Use `--dry-run` for tree-shape testing without LLM or Codex calls.
+
+**Multi-provider LLM routing is available.** OpenRouter, Google Gemini, and DeepSeek are supported through the shared OpenAI-compatible provider layer for debate, analysis, synthesis, and judging.
 
 ## Work Plan
 
@@ -131,12 +152,16 @@ npx tsx src/cli/index.ts resume <run-id>  # Resume
 - Imports use `.js` extension (NodeNext module resolution)
 - No classes where a function would suffice — classes only for stateful components (DebateEngine, TreeOrchestrator, Judge, FileStore, CodexExecutor)
 - Types go in `src/types/index.ts`
+- Provider defaults and OpenAI-compatible endpoint configuration go in `src/providers/llm-provider.ts`; do not scatter provider URLs or env var names across call sites
 - Error handling: wrap LLM calls in try/catch, fallback gracefully, never crash the tree traversal
 - Console output: use chalk for colour, ora for spinners, keep output readable
 
 ## Environment Variables
 
-- `OPENAI_API_KEY` — required for all LLM calls
+- `OPENAI_API_KEY` — required for `--provider openai`
+- `OPENROUTER_API_KEY` — required for `--provider openrouter`
+- `GEMINI_API_KEY` — required for `--provider gemini`
+- `DEEPSEEK_API_KEY` — required for `--provider deepseek`
 - Codex CLI must be installed and authenticated (`npm install -g @openai/codex && codex login`)
 
 ## Testing

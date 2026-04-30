@@ -33,7 +33,11 @@ See [docs/architecture.md](docs/architecture.md) for the system diagrams and lay
 ## Prerequisites
 
 - Node.js 18+
-- `OPENAI_API_KEY` environment variable set
+- An LLM provider API key for debate and judging:
+  - `OPENAI_API_KEY` for `--provider openai`
+  - `OPENROUTER_API_KEY` for `--provider openrouter`
+  - `GEMINI_API_KEY` for `--provider gemini`
+  - `DEEPSEEK_API_KEY` for `--provider deepseek`
 - OpenAI Codex CLI installed and authenticated (for leaf execution):
   ```bash
   npm install -g @openai/codex
@@ -78,6 +82,26 @@ cto run "Build X" -y
 cto run "Build X" --dry-run
 ```
 
+### LLM Providers
+
+CTO can run the debate, analyzer, synthesis, and judge calls through OpenAI-compatible providers. Leaf implementation still uses Codex unless the run is in exploration mode or `--dry-run`.
+
+```bash
+# OpenRouter, default model: qwen/qwen3-coder:free
+OPENROUTER_API_KEY=... cto run "Build X" --provider openrouter
+
+# Google Gemini, default model: gemini-3-flash-preview
+GEMINI_API_KEY=... cto run "Build X" --provider gemini
+
+# DeepSeek, default model: deepseek-v4-pro
+DEEPSEEK_API_KEY=... cto run "Build X" --provider deepseek
+
+# Override any provider default
+cto run "Build X" --provider openrouter --model openai/gpt-oss-120b:free
+```
+
+Provider defaults live in `src/providers/llm-provider.ts`. You can override the OpenAI-compatible endpoint or API-key variable with `--base-url` and `--api-key-env`, which is useful for proxies, self-hosted gateways, or alternate provider accounts.
+
 To inspect saved or running runs visually:
 
 ```bash
@@ -100,6 +124,10 @@ Options:
   -b, --branching <n>        Maximum branches per node         (default: 3)
   -r, --rounds <n>           Maximum debate rounds/node        (default: 3)
   -m, --model <model>        Reasoning + judge model           (default: gpt-4o)
+      --provider <provider>  LLM provider: openai, openrouter,
+                             gemini, or deepseek
+      --base-url <url>       Override provider OpenAI-compatible base URL
+      --api-key-env <name>   Env var containing the provider API key
   -w, --workdir <path>       Working dir for Codex             (default: cwd)
       --token-budget <n>     Warn when LLM tokens exceed n
       --leaf-concurrency <n> Max parallel leaf Codex executions (default: 4)
@@ -193,10 +221,12 @@ If `run-id` is provided, the UI opens that run directly. Use `--no-open` to prin
 ### `resume <run-id>` — continue a paused or failed run
 
 ```
-cto resume run-abc123 [--dry-run] [--leaf-concurrency <n>] [--interactive-plan] [--monitor] [--ui-review]
+cto resume run-abc123 [--provider <provider>] [--model <model>] [--base-url <url>] [--api-key-env <name>] [--dry-run] [--leaf-concurrency <n>] [--interactive-plan] [--monitor] [--ui-review]
 ```
 
 Press **Ctrl+C** at any time during a run to pause it — state is saved and you can resume later.
+
+Resume uses the provider, base URL, API-key env, and model saved in the run config. Pass `--provider`, `--model`, `--base-url`, or `--api-key-env` only when you want to override the saved settings.
 
 Interactive plan state is also resumable. Already-reviewed leaves are not prompted again, killed leaves remain pruned, and `cto resume <run-id> --interactive-plan` can enable the gate for an older paused run.
 
@@ -209,6 +239,7 @@ Five knobs control how much a run will cost:
 3. **Concurrency** — `--leaf-concurrency` controls how many Codex leaf executions run in parallel. Higher = faster wall-clock but more peak load. Doesn't affect total cost.
 4. **Run mode** — exploration mode synthesizes documents from leaf debates and skips Codex execution plus judge scoring.
 5. **Interactive planning** — `--interactive-plan` lets a human kill branches before execution or synthesis, or revise a candidate once so the agents debate the corrected direction before expensive work begins.
+6. **Provider choice** — `--provider openrouter` with `:free` models can make debate and judge calls free within provider limits. Unknown model pricing falls back to GPT-4o rates in estimates so the CLI errs on the conservative side.
 
 The final summary breaks Codex token usage down by input / cached input / output / reasoning so you can see where the budget went.
 

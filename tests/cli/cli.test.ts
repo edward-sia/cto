@@ -102,4 +102,56 @@ describe("CLI", () => {
     expect(output).toContain("--monitor");
     expect(output).toContain("--ui-review");
   });
+
+  it("uses provider-specific default models in dry-run mode", () => {
+    const output = execFileSync(
+      "npx",
+      [
+        "tsx",
+        "src/cli/index.ts",
+        "run",
+        "Build a REST API",
+        "--dry-run",
+        "--depth",
+        "1",
+        "--rounds",
+        "1",
+        "--provider",
+        "openrouter",
+      ],
+      {
+        cwd: process.cwd(),
+        encoding: "utf-8",
+        env: { ...process.env, FORCE_COLOR: "0" },
+        stdio: ["ignore", "pipe", "pipe"],
+      }
+    );
+
+    expect(output).toContain("provider=openrouter");
+    expect(output).toContain("model=qwen/qwen3-coder:free");
+    expect(output).toContain("Provider:   OpenRouter");
+  });
+
+  it("shows the supported LLM providers in help", () => {
+    const output = execFileSync(
+      "npx",
+      [
+        "tsx",
+        "src/cli/index.ts",
+        "run",
+        "--help",
+      ],
+      {
+        cwd: process.cwd(),
+        encoding: "utf-8",
+        env: { ...process.env, FORCE_COLOR: "0" },
+        stdio: ["ignore", "pipe", "pipe"],
+      }
+    );
+
+    expect(output).toContain("--provider <provider>");
+    expect(output).toContain("openrouter");
+    expect(output).toContain("gemini");
+    expect(output).toContain("deepseek");
+  });
 });

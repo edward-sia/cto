@@ -13,7 +13,6 @@
  */
 
 import { Command } from "commander";
-import OpenAI from "openai";
 import chalk from "chalk";
 import ora from "ora";
 import { createInterface } from "node:readline/promises";
@@ -22,6 +21,14 @@ import { TreeOrchestrator, DEFAULT_RUN_CONFIG } from "../orchestrator/orchestrat
 import { FileStore } from "../persistence/file-store.js";
 import type { HumanPlanDecision, RunState, TreeNode, RunConfig } from "../types/index.js";
 import { AGENT_DISPLAY_NAMES } from "../types/index.js";
+import {
+  LLM_PROVIDER_IDS,
+  getLLMProviderDefinition,
+  makeLLMClient,
+  parseLLMProvider,
+  providerLabel,
+  resolveProviderModel,
+} from "../providers/llm-provider.js";
 import { startUiServer, type StartedUiServer } from "../ui/server.js";
 import { estimateRunCost, formatCostEstimate, priceCodexUsage, priceLLMUsage } from "../utils/cost.js";
 import { loadGroundTruth } from "../ground-truth/provider.js";
@@ -45,6 +52,9 @@ program
   .option("-b, --branching <n>", "Maximum branching factor", String(DEFAULT_RUN_CONFIG.maxBranching))
   .option("-r, --rounds <n>", "Maximum debate rounds", String(DEFAULT_RUN_CONFIG.maxDebateRounds))
   .option("-m, --model <model>", "Reasoning model", DEFAULT_RUN_CONFIG.reasoningModel)
+  .option("--provider <provider>", `LLM provider for debate/judge calls (${LLM_PROVIDER_IDS.join(", ")})`, DEFAULT_RUN_CONFIG.llmProvider)
+  .option("--base-url <url>", "Override the provider's OpenAI-compatible base URL")
+  .option("--api-key-env <name>", "Environment variable that contains the provider API key")
   .option("-w, --workdir <path>", "Working directory for Codex", process.cwd())
   .option("--token-budget <n>", "Warn when total tokens exceed this limit")
   .option("--leaf-concurrency <n>", "Max parallel leaf Codex executions", String(DEFAULT_RUN_CONFIG.leafConcurrency))
@@ -57,9 +67,14 @@ program
   .option("--monitor", "Launch the live browser monitor while the run is active", false)
   .option("--ui-review", "Use the browser UI for interactive plan decisions", false)
   .option("-y, --yes", "Skip pre-run cost confirmation", false)
-  .action(async (intent: string, opts) => {
+  .action(async (intent: string, opts, command: Command) => {
     const dryRun = Boolean(opts.dryRun);
-    const openai = makeOpenAIClient(dryRun);
+    const llmProvider = parseProviderOrExit(opts.provider);
+    const modelWasExplicit = command.getOptionValueSource("model") !== "default";
+    const model = resolveProviderModel(llmProvider, opts.model, modelWasExplicit);
+    const providerDefaults = getLLMProviderDefinition(llmProvider);
+    const llmApiKeyEnv = opts.apiKeyEnv ?? providerDefaults.apiKeyEnv;
+    const llmBaseURL = opts.baseUrl ?? providerDefaults.baseURL;
     const spinner = ora();
     const useUiReview = Boolean(opts.uiReview);
     const launchMonitor = Boolean(opts.monitor) || useUiReview;
@@ -86,8 +101,11 @@ program
       maxDepth: parsedDepth,
       maxBranching: parsedBranching,
       maxDebateRounds: parsedRounds,
-      reasoningModel: opts.model,
-      judgeModel: opts.model,
+      llmProvider,
+      llmBaseURL,
+      llmApiKeyEnv,
+      reasoningModel: model,
+      judgeModel: model,
       workingDirectory: opts.workdir,
       tokenBudget: opts.tokenBudget ? parseInt(opts.tokenBudget, 10) : undefined,
       dryRun,
@@ -99,6 +117,12 @@ program
     };
 
     const fullConfig: RunConfig = { ...DEFAULT_RUN_CONFIG, ...config };
+    const openai = makeLLMClientOrExit({
+      provider: llmProvider,
+      dryRun,
+      apiKeyEnv: llmApiKeyEnv,
+      baseURL: llmBaseURL,
+    });
 
     let domainFacts: DomainFacts | undefined;
     if (opts.groundTruth) {
@@ -206,7 +230,8 @@ program
 
     console.log(chalk.bold.white("\n🌳 Cambrian Tree Orchestrator"));
     console.log(chalk.dim(`Intent: ${intent}`));
-    console.log(chalk.dim(`Config: depth=${opts.depth}, branching=${opts.branching}, rounds=${opts.rounds}, model=${opts.model}, leaf-concurrency=${opts.leafConcurrency}, prune-threshold=${opts.pruneThreshold}`));
+    console.log(chalk.dim(`Config: depth=${opts.depth}, branching=${opts.branching}, rounds=${opts.rounds}, provider=${llmProvider}, model=${model}, leaf-concurrency=${opts.leafConcurrency}, prune-threshold=${opts.pruneThreshold}`));
+    console.log(chalk.dim(`LLM: ${providerLabel(fullConfig)}`));
     console.log(chalk.dim(`Working dir: ${opts.workdir}`));
     if (opts.cloudEnv) console.log(chalk.cyan(`Codex Cloud: env=${opts.cloudEnv}, attempts=${opts.cloudAttempts ?? 1}`));
     if (dryRun) console.log(chalk.yellow("Mode: DRY RUN — no LLM or Codex calls will be made"));
@@ -321,6 +346,10 @@ program
   .command("resume")
   .description("Resume a paused or failed run")
   .argument("<run-id>", "Run ID to resume")
+  .option("-m, --model <model>", "Override the saved reasoning/judge model")
+  .option("--provider <provider>", `Override the saved LLM provider (${LLM_PROVIDER_IDS.join(", ")})`)
+  .option("--base-url <url>", "Override the saved provider base URL")
+  .option("--api-key-env <name>", "Override the saved provider API key environment variable")
   .option("--dry-run", "Skip all LLM and Codex calls", false)
   .option("--leaf-concurrency <n>", "Override max parallel leaf executions on resume")
   .option("--interactive-plan", "Enable interactive plan review on resume")
@@ -328,7 +357,24 @@ program
   .option("--ui-review", "Use the browser UI for interactive plan decisions", false)
   .action(async (runId: string, opts) => {
     const dryRun = Boolean(opts.dryRun);
-    const openai = makeOpenAIClient(dryRun);
+    const store = new FileStore();
+    const savedRun = await store.load(runId);
+    if (!savedRun) {
+      console.error(chalk.red(`Run ${runId} not found.`));
+      process.exit(1);
+    }
+    const savedProvider = savedRun.config.llmProvider ?? DEFAULT_RUN_CONFIG.llmProvider;
+    const llmProvider = parseProviderOrExit(opts.provider ?? savedProvider);
+    const providerDefaults = getLLMProviderDefinition(llmProvider);
+    const model = opts.model ?? savedRun.config.reasoningModel ?? providerDefaults.defaultModel;
+    const llmBaseURL = opts.baseUrl ?? savedRun.config.llmBaseURL ?? providerDefaults.baseURL;
+    const llmApiKeyEnv = opts.apiKeyEnv ?? savedRun.config.llmApiKeyEnv ?? providerDefaults.apiKeyEnv;
+    const openai = makeLLMClientOrExit({
+      provider: llmProvider,
+      dryRun,
+      apiKeyEnv: llmApiKeyEnv,
+      baseURL: llmBaseURL,
+    });
     const spinner = ora();
     const useUiReview = Boolean(opts.uiReview);
     const launchMonitor = Boolean(opts.monitor) || useUiReview;
@@ -341,6 +387,11 @@ program
     }
     const orchestrator = new TreeOrchestrator(openai, {
       ...(dryRun ? { dryRun } : {}),
+      llmProvider,
+      llmBaseURL,
+      llmApiKeyEnv,
+      reasoningModel: model,
+      judgeModel: model,
       ...(opts.leafConcurrency ? { leafConcurrency: parseInt(opts.leafConcurrency, 10) } : {}),
       ...(opts.interactivePlan || useUiReview ? { interactivePlan: true } : {}),
     }, {
@@ -356,6 +407,7 @@ program
       },
     });
     console.log(chalk.blue(`\nResuming run ${runId}...\n`));
+    console.log(chalk.dim(`LLM: ${providerLabel({ llmProvider, llmBaseURL, llmApiKeyEnv })}, model=${model}`));
     try {
       const state = await orchestrator.resume(runId);
       printResults(state);
@@ -439,13 +491,22 @@ async function reviewHumanPlan(node: TreeNode, state: RunState): Promise<HumanPl
   }
 }
 
-function makeOpenAIClient(dryRun: boolean): OpenAI {
-  // The OpenAI SDK throws at construction if no API key is set. In dry-run
-  // mode we never actually invoke the client, so a placeholder key is fine.
-  if (dryRun && !process.env.OPENAI_API_KEY) {
-    return new OpenAI({ apiKey: "dry-run-placeholder" });
+function parseProviderOrExit(raw: string | undefined): RunConfig["llmProvider"] {
+  try {
+    return parseLLMProvider(raw);
+  } catch (err) {
+    console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+    process.exit(1);
   }
-  return new OpenAI();
+}
+
+function makeLLMClientOrExit(options: Parameters<typeof makeLLMClient>[0]): ReturnType<typeof makeLLMClient> {
+  try {
+    return makeLLMClient(options);
+  } catch (err) {
+    console.error(chalk.red(err instanceof Error ? err.message : String(err)));
+    process.exit(1);
+  }
 }
 
 function printDebateProgress(
@@ -518,6 +579,8 @@ function printResults(state: RunState): void {
   console.log(`${chalk.bold("Intent:")}     ${state.intent}`);
   console.log(`${chalk.bold("Status:")}     ${state.status}`);
   console.log(`${chalk.bold("Mode:")}       ${state.runMode ?? "implementation"}`);
+  console.log(`${chalk.bold("Provider:")}   ${providerLabel(state.config)}`);
+  console.log(`${chalk.bold("Model:")}      ${state.config.reasoningModel}`);
   console.log(`${chalk.bold("Leaves:")}     ${state.leafNodeIds.length}`);
   console.log(`${chalk.bold("Tokens:")}     ${state.totalTokensUsed.toLocaleString()} (debate + judge)`);
   if (state.llmUsage) {

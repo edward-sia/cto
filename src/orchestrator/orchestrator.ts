@@ -44,6 +44,8 @@ export const DEFAULT_RUN_CONFIG: RunConfig = {
   maxDepth: 6,
   maxBranching: 3,
   maxDebateRounds: 3,
+  llmProvider: "openai",
+  llmApiKeyEnv: "OPENAI_API_KEY",
   reasoningModel: "gpt-4o",
   judgeModel: "gpt-4o",
   workingDirectory: process.cwd(),

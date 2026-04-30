@@ -225,10 +225,15 @@ export interface TreeNode {
   updatedAt: string;
 }
 
+export type LLMProvider = "openai" | "openrouter" | "gemini" | "deepseek";
+
 export interface RunConfig {
   maxDepth: number;
   maxBranching: number;
   maxDebateRounds: number;
+  llmProvider: LLMProvider;
+  llmBaseURL?: string;
+  llmApiKeyEnv?: string;
   reasoningModel: string;
   judgeModel: string;
   workingDirectory: string;

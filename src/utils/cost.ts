@@ -17,6 +17,9 @@ const MODEL_PRICES: Record<string, ModelPrice> = {
   "gpt-4.1-mini": { inputPerMTok: 0.4, outputPerMTok: 1.6 },
   "o3": { inputPerMTok: 2, outputPerMTok: 8 },
   "o3-mini": { inputPerMTok: 1.1, outputPerMTok: 4.4 },
+  "openrouter/free": { inputPerMTok: 0, outputPerMTok: 0 },
+  "deepseek-v4-pro": { inputPerMTok: 0.435, outputPerMTok: 0.87 },
+  "deepseek-v4-flash": { inputPerMTok: 0.14, outputPerMTok: 0.28 },
 };
 
 const DEFAULT_PRICE: ModelPrice = MODEL_PRICES["gpt-4o"];
@@ -51,6 +54,9 @@ export interface CostEstimate {
 }
 
 function getPrice(model: string): { price: ModelPrice; known: boolean } {
+  if (model.endsWith(":free")) {
+    return { price: { inputPerMTok: 0, outputPerMTok: 0 }, known: true };
+  }
   const exact = MODEL_PRICES[model];
   if (exact) return { price: exact, known: true };
   return { price: DEFAULT_PRICE, known: false };

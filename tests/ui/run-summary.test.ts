@@ -21,6 +21,7 @@ function node(overrides: Partial<TreeNode>): TreeNode {
     debate: overrides.debate,
     executionResult: overrides.executionResult,
     score: overrides.score,
+    fitness: overrides.fitness,
   };
 }
 
@@ -59,7 +60,7 @@ function run(overrides: Partial<RunState>): RunState {
 }
 
 describe("summarizeRun", () => {
-  it("returns run metadata, actual leaf count, and best scored leaf composite", () => {
+  it("returns run metadata, actual leaf count, and best fitness-or-score composite", () => {
     const lowScoredLeaf = node({
       id: "node-low",
       parentId: "node-branch",
@@ -72,6 +73,19 @@ describe("summarizeRun", () => {
         simplicity: 0.6,
         composite: 0.68,
         rationale: "Some coverage gaps.",
+      },
+      fitness: {
+        verification: 10,
+        functionalCompleteness: 0.7,
+        maintainability: 0.8,
+        simplicity: 0.6,
+        intentAlignment: 0.9,
+        riskReduction: 0.8,
+        costEfficiency: 0.8,
+        uncertaintyPenalty: 0.1,
+        composite: 0.95,
+        evidence: ["Verification passed."],
+        failures: [],
       },
     });
     const highScoredLeaf = node({
@@ -114,7 +128,7 @@ describe("summarizeRun", () => {
       startedAt: "2026-04-28T01:00:00.000Z",
       completedAt: "2026-04-28T02:30:00.000Z",
       leafCount: 3,
-      bestScore: 0.87,
+      bestScore: 0.95,
       codexUsageTotal: undefined,
       codexUsageByLeaf: [],
     });

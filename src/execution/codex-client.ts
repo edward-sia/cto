@@ -171,6 +171,36 @@ export class CodexExecutor {
     const sections = [
       `# Implementation Task\n`,
       `## Original Intent\n${ctx.originalIntent}\n`,
+      ctx.intentDossier
+        ? `## Intent Dossier
+Goal: ${ctx.intentDossier.goal}
+User value: ${ctx.intentDossier.userValue}
+
+Acceptance criteria:
+${ctx.intentDossier.acceptanceCriteria.map((c) => `- ${c}`).join("\n") || "- None specified"}
+
+Constraints:
+${ctx.intentDossier.constraints.map((c) => `- ${c}`).join("\n") || "- None specified"}
+
+Non-goals:
+${ctx.intentDossier.nonGoals.map((g) => `- ${g}`).join("\n") || "- None specified"}
+
+Risk areas:
+${ctx.intentDossier.riskAreas.map((r) => `- ${r}`).join("\n") || "- None specified"}
+
+Required checks:
+${ctx.intentDossier.requiredChecks.map((check) => `- ${check}`).join("\n") || "- None specified"}
+
+Known unknowns:
+${ctx.intentDossier.knownUnknowns.map((unknown) => `- ${unknown}`).join("\n") || "- None specified"}
+
+Success signals:
+${ctx.intentDossier.successSignals.map((signal) => `- ${signal}`).join("\n") || "- None specified"}
+
+Failure modes:
+${ctx.intentDossier.failureModes.map((mode) => `- ${mode}`).join("\n") || "- None specified"}
+`
+        : "",
       ctx.humanRevisionPrompt
         ? `## Human Revision\nThe human reviewer added this steering instruction before implementation:\n${ctx.humanRevisionPrompt}\n`
         : "",

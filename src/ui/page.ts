@@ -1695,7 +1695,12 @@ function clientScript(): string {
     description.textContent = truncate(node.branchDescription || node.id || "", 39);
     group.appendChild(description);
 
-    if (node.score && typeof node.score.composite === "number") {
+    var nodeComposite = node.fitness && typeof node.fitness.composite === "number"
+      ? node.fitness.composite
+      : node.score && typeof node.score.composite === "number"
+        ? node.score.composite
+        : undefined;
+    if (typeof nodeComposite === "number") {
       var badge = svgEl("rect");
       badge.setAttribute("class", "score-badge");
       badge.setAttribute("x", String(NODE_WIDTH - 56));
@@ -1710,7 +1715,7 @@ function clientScript(): string {
       score.setAttribute("x", String(NODE_WIDTH - 34));
       score.setAttribute("y", "24");
       score.setAttribute("text-anchor", "middle");
-      score.textContent = formatScore(node.score.composite);
+      score.textContent = formatScore(nodeComposite);
       group.appendChild(score);
     }
 
@@ -2103,6 +2108,20 @@ function clientScript(): string {
       appendScoreRow(score, "Simplicity", node.score.simplicity);
       appendTextOrEmpty(score, node.score.rationale, "No rationale recorded.");
       refs.tabContent.appendChild(score);
+    }
+
+    if (node.fitness) {
+      var fitness = section("Fitness Score");
+      appendKeyValue(fitness, "Composite", formatScore(node.fitness.composite));
+      appendScoreRow(fitness, "Verification", node.fitness.verification);
+      appendScoreRow(fitness, "Functional", node.fitness.functionalCompleteness);
+      appendScoreRow(fitness, "Maintainability", node.fitness.maintainability);
+      appendScoreRow(fitness, "Simplicity", node.fitness.simplicity);
+      appendScoreRow(fitness, "Intent", node.fitness.intentAlignment);
+      appendScoreRow(fitness, "Risk reduction", node.fitness.riskReduction);
+      appendScoreRow(fitness, "Cost efficiency", node.fitness.costEfficiency);
+      appendScoreRow(fitness, "Uncertainty penalty", node.fitness.uncertaintyPenalty);
+      refs.tabContent.appendChild(fitness);
     }
   }
 
@@ -2744,7 +2763,11 @@ function clientScript(): string {
     if (!node || (!state.showPruned && node.status === "pruned")) {
       return undefined;
     }
-    var score = node.score && typeof node.score.composite === "number" ? node.score.composite : undefined;
+    var score = node.fitness && typeof node.fitness.composite === "number"
+      ? node.fitness.composite
+      : node.score && typeof node.score.composite === "number"
+        ? node.score.composite
+        : undefined;
     var children = Array.isArray(node.children) ? node.children : [];
     children.forEach(function (child) {
       var childScore = bestScore(child);

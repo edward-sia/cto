@@ -102,4 +102,68 @@ describe("CLI", () => {
     expect(output).toContain("--monitor");
     expect(output).toContain("--ui-review");
   });
+
+  it("exposes evolutionary foundation flags", () => {
+    const output = execFileSync(
+      "npx",
+      [
+        "tsx",
+        "src/cli/index.ts",
+        "run",
+        "--help",
+      ],
+      {
+        cwd: process.cwd(),
+        encoding: "utf-8",
+        env: { ...process.env, FORCE_COLOR: "0" },
+        stdio: ["ignore", "pipe", "pipe"],
+      }
+    );
+
+    expect(output).toContain("--verify");
+    expect(output).toContain("--verify-timeout");
+    expect(output).toContain("--prune-schedule");
+  });
+
+  it("rejects invalid prune schedule entries", () => {
+    type ExecFileError = Error & {
+      status?: number;
+      stderr?: string | Buffer;
+    };
+
+    let error: ExecFileError | undefined;
+
+    try {
+      execFileSync(
+        "npx",
+        [
+          "tsx",
+          "src/cli/index.ts",
+          "run",
+          "Build a REST API",
+          "--dry-run",
+          "--depth",
+          "1",
+          "--rounds",
+          "1",
+          "--branching",
+          "2",
+          "--prune-schedule",
+          "0:0.4,bad",
+        ],
+        {
+          cwd: process.cwd(),
+          encoding: "utf-8",
+          env: { ...process.env, FORCE_COLOR: "0" },
+          stdio: ["ignore", "pipe", "pipe"],
+        }
+      );
+    } catch (err) {
+      error = err instanceof Error ? err as ExecFileError : undefined;
+    }
+
+    expect(error).toBeDefined();
+    expect(error?.status).toBeGreaterThan(0);
+    expect(error?.stderr?.toString()).toContain("Invalid prune schedule entry");
+  });
 });

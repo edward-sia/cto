@@ -28,6 +28,31 @@ export const IntentDecompositionSchema = z.object({
   rationale: z.string().default(""),
 });
 
+export const IntentDossierSchema = z.object({
+  goal: z.string().default(""),
+  userValue: z.string().default(""),
+  nonGoals: z.array(z.string()).default([]),
+  constraints: z.array(z.string()).default([]),
+  acceptanceCriteria: z.array(z.string()).default([]),
+  requiredChecks: z.array(z.string()).default([]),
+  riskAreas: z.array(z.string()).default([]),
+  knownUnknowns: z.array(z.string()).default([]),
+  successSignals: z.array(z.string()).default([]),
+  failureModes: z.array(z.string()).default([]),
+});
+
+export const VerificationCommandSchema = z.object({
+  id: z.string().min(1),
+  command: z.string().min(1),
+  required: z.boolean().default(true),
+  timeoutMs: z.number().int().positive().default(300_000),
+});
+
+export const PruneSchedulePointSchema = z.object({
+  depth: z.number().int().min(0),
+  threshold: z.number().min(0).max(1),
+});
+
 export const ModeratorAssessmentSchema = z.object({
   outcome: z.enum(["consensus", "diverging", "continue"]),
   alternatives: z.array(AlternativeSchema).default([]),
@@ -41,6 +66,9 @@ export const JudgeScoreSchema = z.object({
   intentAlignment: z.number().min(0).max(10),
   realWorldFit: z.number().min(0).max(10),
   simplicity: z.number().min(0).max(10),
+  uncertainty: z.number().min(0).max(1).default(0.5),
+  evidence: z.array(z.string()).default([]),
+  failures: z.array(z.string()).default([]),
   composite: z.number(),
   rationale: z.string(),
 });

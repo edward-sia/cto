@@ -20,15 +20,26 @@ import { createInterface } from "node:readline/promises";
 import { HumanReviewStore } from "../control/human-review-store.js";
 import { TreeOrchestrator, DEFAULT_RUN_CONFIG } from "../orchestrator/orchestrator.js";
 import { FileStore } from "../persistence/file-store.js";
-import type { HumanPlanDecision, RunState, TreeNode, RunConfig } from "../types/index.js";
+import type { HumanPlanDecision, PruneSchedulePoint, RunState, TreeNode, RunConfig } from "../types/index.js";
 import { AGENT_DISPLAY_NAMES } from "../types/index.js";
 import { startUiServer, type StartedUiServer } from "../ui/server.js";
 import { estimateRunCost, formatCostEstimate, priceCodexUsage, priceLLMUsage } from "../utils/cost.js";
+import { parsePruneSchedule } from "../utils/pruning.js";
 import { loadGroundTruth } from "../ground-truth/provider.js";
 import type { DomainFacts } from "../ground-truth/types.js";
 import type { DebateProgressEvent } from "../debate/engine.js";
 
 const program = new Command();
+
+function collectValues(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
+function parsePositiveInteger(value: string): number | undefined {
+  if (!/^\d+$/.test(value)) return undefined;
+  const parsed = Number(value);
+  return parsed > 0 ? parsed : undefined;
+}
 
 program
   .name("cto")
@@ -49,8 +60,11 @@ program
   .option("--token-budget <n>", "Warn when total tokens exceed this limit")
   .option("--leaf-concurrency <n>", "Max parallel leaf Codex executions", String(DEFAULT_RUN_CONFIG.leafConcurrency))
   .option("--prune-threshold <n>", "Drop alternatives whose confidence × relevance-to-intent is below this (0-1)", String(DEFAULT_RUN_CONFIG.pruneThreshold))
+  .option("--prune-schedule <schedule>", "Depth-aware prune schedule, e.g. 0:0.45,1:0.6,3:0.8")
   .option("--cloud-env <id>", "Use Codex Cloud with this environment id instead of local SDK")
   .option("--cloud-attempts <n>", "Best-of-N attempts when using --cloud-env", "1")
+  .option("--verify <command>", "Verification command to run after each leaf execution (repeatable)", collectValues, [])
+  .option("--verify-timeout <ms>", "Verification command timeout in milliseconds", "300000")
   .option("--dry-run", "Skip all LLM and Codex calls — exercise tree shape only", false)
   .option("--ground-truth <spec>", "Inject verified domain facts (e.g. file:./facts.json, sample:./data.csv, openapi:./spec.yaml)")
   .option("--interactive-plan", "Review candidate leaves before implementation", false)
@@ -70,6 +84,7 @@ program
     const parsedRounds = parseInt(opts.rounds, 10);
     const parsedLeafConcurrency = parseInt(opts.leafConcurrency, 10);
     const parsedPruneThreshold = parseFloat(opts.pruneThreshold);
+    const parsedVerifyTimeout = parsePositiveInteger(opts.verifyTimeout);
 
     const numericErrors: string[] = [];
     if (isNaN(parsedDepth)) numericErrors.push(`--depth: "${opts.depth}" is not a number (tip: use -d 2, not -d=2)`);
@@ -77,9 +92,22 @@ program
     if (isNaN(parsedRounds)) numericErrors.push(`--rounds: "${opts.rounds}" is not a number`);
     if (isNaN(parsedLeafConcurrency)) numericErrors.push(`--leaf-concurrency: "${opts.leafConcurrency}" is not a number`);
     if (isNaN(parsedPruneThreshold)) numericErrors.push(`--prune-threshold: "${opts.pruneThreshold}" is not a number`);
+    if (parsedVerifyTimeout === undefined) numericErrors.push(`--verify-timeout: "${opts.verifyTimeout}" must be a positive integer`);
     if (numericErrors.length > 0) {
       for (const err of numericErrors) console.error(chalk.red(`Error: ${err}`));
       process.exit(1);
+    }
+
+    const verificationTimeoutMs = parsedVerifyTimeout ?? DEFAULT_RUN_CONFIG.verificationTimeoutMs;
+
+    let pruneSchedule: PruneSchedulePoint[] | undefined;
+    if (opts.pruneSchedule) {
+      try {
+        pruneSchedule = parsePruneSchedule(opts.pruneSchedule);
+      } catch (err) {
+        console.error(chalk.red(`Error: ${err instanceof Error ? err.message : String(err)}`));
+        process.exit(1);
+      }
     }
 
     const config: Partial<RunConfig> = {
@@ -94,6 +122,14 @@ program
       interactivePlan: Boolean(opts.interactivePlan) || useUiReview,
       leafConcurrency: parsedLeafConcurrency,
       pruneThreshold: parsedPruneThreshold,
+      pruneSchedule,
+      verificationTimeoutMs,
+      verificationCommands: (opts.verify ?? []).map((command: string, idx: number) => ({
+        id: `verify-${idx + 1}`,
+        command,
+        required: true,
+        timeoutMs: verificationTimeoutMs,
+      })),
       cloudEnv: opts.cloudEnv,
       cloudAttempts: opts.cloudAttempts ? parseInt(opts.cloudAttempts, 10) : undefined,
     };
@@ -555,7 +591,12 @@ function printResults(state: RunState): void {
     for (let i = 0; i < state.rankedResults.length; i++) {
       const r = state.rankedResults[i];
       const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`;
-      console.log(`${medal} ${chalk.bold(r.score.composite.toFixed(1))}/10 — Path: ${chalk.cyan(r.path.join(" → ") || "(root)")}`);
+      const composite = r.fitness?.composite ?? r.score.composite;
+      const label = r.fitness ? "Fitness" : "Score";
+      console.log(`${medal} ${chalk.bold(composite.toFixed(1))}/10 ${chalk.dim(label)} — Path: ${chalk.cyan(r.path.join(" → ") || "(root)")}`);
+      if (r.fitness) {
+        console.log(chalk.dim(`   Judge:${r.score.composite.toFixed(1)} Verification:${r.fitness.verification.toFixed(1)} Uncertainty penalty:${r.fitness.uncertaintyPenalty.toFixed(1)}`));
+      }
       console.log(chalk.dim(`   FC:${r.score.functionalCompleteness} AQ:${r.score.architecturalQuality} TC:${r.score.testCoverage} IA:${r.score.intentAlignment} RWF:${r.score.realWorldFit} S:${r.score.simplicity}`));
       console.log(chalk.dim(`   ${r.score.rationale}`));
       console.log();
@@ -627,7 +668,8 @@ function printTree(node: TreeNode, prefix: string, isLast = true): void {
   };
   const icon = icons[node.status] ?? "❓";
   const label = node.branchLabel || "root";
-  const scoreStr = node.score ? chalk.green(` (${node.score.composite.toFixed(1)}/10)`) : "";
+  const composite = node.fitness?.composite ?? node.score?.composite;
+  const scoreStr = typeof composite === "number" ? chalk.green(` (${composite.toFixed(1)}/10)`) : "";
 
   console.log(`${prefix}${connector}${icon} ${chalk.bold(label)}${scoreStr} ${chalk.dim(`[${node.id.slice(0, 8)}] d=${node.depth}`)}`);
 

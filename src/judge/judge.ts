@@ -60,6 +60,9 @@ Respond with ONLY valid JSON:
   "intentAlignment": <0-10>,
   "realWorldFit": <0-10>,
   "simplicity": <0-10>,
+  "uncertainty": <0-1>,
+  "evidence": ["specific evidence from solution output, tests, files, or ground truth"],
+  "failures": ["specific missing or failed behavior"],
   "composite": <weighted-average>,
   "rationale": "<2-3 sentence explanation>"
 }`;
@@ -175,6 +178,9 @@ Score this solution against all six rubrics. Pay special attention to Real-World
       intentAlignment: ia,
       realWorldFit: rwf,
       simplicity: s,
+      uncertainty: 0.25,
+      evidence: [`[dry-run] Synthetic evidence for ${node.branchLabel || "root"}.`],
+      failures: [],
       composite,
       rationale: `[dry-run] Synthetic score for ${node.branchLabel || "root"}.`,
     };
@@ -188,6 +194,9 @@ Score this solution against all six rubrics. Pay special attention to Real-World
       intentAlignment: 0,
       realWorldFit: 0,
       simplicity: 0,
+      uncertainty: 1,
+      evidence: [],
+      failures: [rationale],
       composite: 0,
       rationale,
     };

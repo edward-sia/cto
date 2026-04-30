@@ -6,6 +6,7 @@
 
 import OpenAI from "openai";
 import { nanoid } from "nanoid";
+import { join } from "node:path";
 import type {
   TreeNode,
   NodeContext,
@@ -24,14 +25,18 @@ import type {
 import { PHASE_AGENTS } from "../types/index.js";
 import { addUsage, emptyUsage } from "../utils/usage.js";
 import { getPhaseForDepth } from "../utils/phase.js";
+import { getPruneThresholdForDepth } from "../utils/pruning.js";
 import { AGENT_DEFINITIONS } from "../agents/definitions.js";
 import { TaskAnalyzer } from "../analyzer/task-analyzer.js";
 import { IntentDecomposer } from "../analyzer/intent-decomposer.js";
+import { IntentDossierBuilder } from "../analyzer/intent-dossier.js";
 import { DebateEngine, type DebateProgressEvent } from "../debate/engine.js";
 import { CodexExecutor } from "../execution/codex-client.js";
+import { computeFitnessScore } from "../judge/fitness.js";
 import { Judge } from "../judge/judge.js";
 import { FileStore } from "../persistence/file-store.js";
 import { Synthesizer } from "../synthesis/synthesizer.js";
+import { VerificationRunner } from "../verification/runner.js";
 
 const DEFAULT_PHASE_DEPTHS: Record<TreePhase, [number, number]> = {
   requirements: [0, 1],
@@ -54,6 +59,8 @@ export const DEFAULT_RUN_CONFIG: RunConfig = {
   interactivePlan: false,
   leafConcurrency: 4,
   pruneThreshold: 0.5,
+  verificationCommands: [],
+  verificationTimeoutMs: 300_000,
 };
 
 async function runWithConcurrency<T>(
@@ -96,6 +103,7 @@ export class TreeOrchestrator {
   private judge: Judge;
   private analyzer: TaskAnalyzer;
   private decomposer: IntentDecomposer;
+  private dossierBuilder: IntentDossierBuilder;
   private synthesizer: Synthesizer;
   private callbacks: OrchestratorCallbacks;
   private runState!: RunState;
@@ -117,6 +125,7 @@ export class TreeOrchestrator {
     this.judge = new Judge(openai, this.config.judgeModel, this.config.dryRun);
     this.analyzer = new TaskAnalyzer(openai, this.config.reasoningModel, this.config.dryRun);
     this.decomposer = new IntentDecomposer(openai, this.config.reasoningModel, this.config.dryRun);
+    this.dossierBuilder = new IntentDossierBuilder(openai, this.config.reasoningModel, this.config.dryRun);
     this.synthesizer = new Synthesizer(openai, this.config.reasoningModel, this.config.dryRun);
     this.callbacks = callbacks;
   }
@@ -127,10 +136,12 @@ export class TreeOrchestrator {
     this.callbacks.onAnalysisComplete?.(analysis);
 
     const decomposition = await this.decomposer.decompose(intent);
+    const dossier = await this.dossierBuilder.build(intent, decomposition);
 
     const root = this.createNode(null, 0, {
       originalIntent: intent,
       intentDecomposition: decomposition,
+      intentDossier: dossier,
       domainFacts,
       ancestorSummaries: [],
     });
@@ -150,6 +161,7 @@ export class TreeOrchestrator {
     };
     this.accumulateLLMUsage(this.analyzer.llmUsage);
     this.accumulateLLMUsage(this.decomposer.llmUsage);
+    this.accumulateLLMUsage(this.dossierBuilder.llmUsage);
 
     await this.store.save(this.runState);
     await this.callbacks.onRunStarted?.(this.runState);
@@ -323,7 +335,11 @@ export class TreeOrchestrator {
     if (transcript.finalOutcome === "branched") {
       const lastRound = transcript.rounds[transcript.rounds.length - 1];
       const allAlternatives = lastRound.alternatives;
-      const threshold = this.config.pruneThreshold;
+      const threshold = getPruneThresholdForDepth(
+        node.depth,
+        this.config.pruneThreshold,
+        this.config.pruneSchedule
+      );
       const effectiveScore = (a: { confidence: number; relevanceToIntent: number }) =>
         a.confidence * a.relevanceToIntent;
       const alternatives = threshold > 0
@@ -419,6 +435,15 @@ export class TreeOrchestrator {
       leaf.status = "executing";
       try {
         leaf.executionResult = await this.codex.execute(leaf);
+        if (this.config.verificationCommands.length > 0 && !this.config.dryRun && !this.config.cloudEnv) {
+          const artifactDirectory = join(this.config.workingDirectory, leaf.id);
+          leaf.executionResult.verification = await new VerificationRunner(this.config.verificationCommands).run(
+            artifactDirectory
+          );
+        } else if (this.config.verificationCommands.length > 0 && this.config.cloudEnv) {
+          leaf.executionResult.output +=
+            "\n\nVerification skipped: Codex Cloud results must be applied locally before verification can run.";
+        }
         leaf.status = "completed";
         if (leaf.executionResult.usage) this.addToCodexTotal(leaf.executionResult.usage);
       } catch (error) {
@@ -442,6 +467,9 @@ export class TreeOrchestrator {
     const tasks = leaves.map((leaf) => async () => {
       const score = await this.judge.score(leaf);
       leaf.score = score;
+      if (leaf.executionResult) {
+        leaf.fitness = computeFitnessScore(score, leaf.executionResult);
+      }
       leaf.status = "scored";
       this.callbacks.onLeafScored?.(leaf.id, score);
     });
@@ -543,8 +571,9 @@ export class TreeOrchestrator {
         nodeId: leaf.id,
         path: this.getPathLabels(root, leaf.id),
         score: leaf.score!,
+        fitness: leaf.fitness,
       }))
-      .sort((a, b) => b.score.composite - a.score.composite);
+      .sort((a, b) => (b.fitness?.composite ?? b.score.composite) - (a.fitness?.composite ?? a.score.composite));
   }
 
   private collectLeaves(node: TreeNode): TreeNode[] {

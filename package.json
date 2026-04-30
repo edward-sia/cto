@@ -14,7 +14,8 @@
     "start": "node dist/cli/index.js",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "docs:check": "tsx src/docs/impact-check.ts",
+    "test": "npm run docs:check && vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {

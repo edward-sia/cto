@@ -72,6 +72,58 @@ describe("TreeOrchestrator", () => {
     }]);
   });
 
+  it("stores an intent dossier and computes leaf fitness in dry-run mode", async () => {
+    const orchestrator = new TreeOrchestrator(
+      {} as OpenAI,
+      {
+        dryRun: true,
+        maxDepth: 1,
+        maxDebateRounds: 1,
+        leafConcurrency: 2,
+        pruneThreshold: 0,
+        verificationCommands: [],
+        verificationTimeoutMs: 300_000,
+      }
+    );
+
+    const state = await orchestrator.run("Build a REST API");
+    const leaves = collectNodes(state.root).filter((node) => node.score);
+
+    expect(state.root.context.intentDossier?.goal).toBe("Build a REST API");
+    expect(leaves.length).toBeGreaterThan(0);
+    expect(leaves.every((leaf) => leaf.fitness)).toBe(true);
+    expect(state.rankedResults?.every((result) => result.fitness)).toBe(true);
+  });
+
+  it("does not run verification commands during dry-run execution", async () => {
+    const orchestrator = new TreeOrchestrator(
+      {} as OpenAI,
+      {
+        dryRun: true,
+        maxDepth: 1,
+        maxDebateRounds: 1,
+        leafConcurrency: 2,
+        pruneThreshold: 0,
+        verificationCommands: [
+          {
+            id: "verify-fail-if-run",
+            command: "node -e \"process.exit(9)\"",
+            required: true,
+            timeoutMs: 30_000,
+          },
+        ],
+        verificationTimeoutMs: 30_000,
+      }
+    );
+
+    const state = await orchestrator.run("Build a REST API");
+    const leaves = collectNodes(state.root).filter((node) => node.executionResult);
+
+    expect(leaves.length).toBeGreaterThan(0);
+    expect(leaves.every((leaf) => leaf.executionResult?.success)).toBe(true);
+    expect(leaves.every((leaf) => leaf.executionResult?.verification === undefined)).toBe(true);
+  });
+
   it("uses phase defaults when selected agents have no primary match for that phase", () => {
     const orchestrator = new TreeOrchestrator({} as OpenAI, { dryRun: true });
     (orchestrator as unknown as { runState: { selectedAgents: string[] } }).runState = {

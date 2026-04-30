@@ -21,7 +21,7 @@ export interface RunSummary {
 export function summarizeRun(run: RunState): RunSummary {
   const leaves = collectLeaves(run.root);
   const scoredComposites = leaves
-    .map((leaf) => leaf.score?.composite)
+    .map((leaf) => leaf.fitness?.composite ?? leaf.score?.composite)
     .filter((score): score is number => score !== undefined);
 
   const codexUsageByLeaf = leaves.flatMap((leaf) => {

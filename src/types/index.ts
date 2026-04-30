@@ -154,9 +154,66 @@ export interface IntentDecomposition {
   rationale: string;
 }
 
+export interface IntentDossier {
+  goal: string;
+  userValue: string;
+  nonGoals: string[];
+  constraints: string[];
+  acceptanceCriteria: string[];
+  requiredChecks: string[];
+  riskAreas: string[];
+  knownUnknowns: string[];
+  successSignals: string[];
+  failureModes: string[];
+}
+
+export interface VerificationCommand {
+  id: string;
+  command: string;
+  required: boolean;
+  timeoutMs: number;
+}
+
+export interface VerificationResult {
+  commandId: string;
+  command: string;
+  exitCode: number | null;
+  passed: boolean;
+  durationMs: number;
+  stdout: string;
+  stderr: string;
+}
+
+export interface VerificationSummary {
+  passed: number;
+  failed: number;
+  requiredFailed: number;
+  results: VerificationResult[];
+}
+
+export interface FitnessScore {
+  verification: number;
+  functionalCompleteness: number;
+  maintainability: number;
+  simplicity: number;
+  intentAlignment: number;
+  riskReduction: number;
+  costEfficiency: number;
+  uncertaintyPenalty: number;
+  composite: number;
+  evidence: string[];
+  failures: string[];
+}
+
+export interface PruneSchedulePoint {
+  depth: number;
+  threshold: number;
+}
+
 export interface NodeContext {
   originalIntent: string;
   intentDecomposition?: IntentDecomposition;
+  intentDossier?: IntentDossier;
   domainFacts?: DomainFacts;
   prd?: string;
   acceptanceCriteria?: string[];
@@ -191,6 +248,7 @@ export interface CodexExecutionResult {
     skipped: number;
     output: string;
   };
+  verification?: VerificationSummary;
   output: string;
   durationMs: number;
   usage?: CodexUsage;
@@ -203,6 +261,9 @@ export interface JudgeScore {
   intentAlignment: number;
   realWorldFit: number;
   simplicity: number;
+  uncertainty: number;
+  evidence: string[];
+  failures: string[];
   composite: number;
   rationale: string;
 }
@@ -221,6 +282,7 @@ export interface TreeNode {
   humanIntervention?: HumanIntervention;
   executionResult?: CodexExecutionResult;
   score?: JudgeScore;
+  fitness?: FitnessScore;
   createdAt: string;
   updatedAt: string;
 }
@@ -243,6 +305,9 @@ export interface RunConfig {
   tokenBudget?: number;
   leafConcurrency: number;
   pruneThreshold: number;
+  pruneSchedule?: PruneSchedulePoint[];
+  verificationCommands: VerificationCommand[];
+  verificationTimeoutMs: number;
   cloudEnv?: string;
   cloudAttempts?: number;
 }
@@ -257,6 +322,7 @@ export interface RunState {
     nodeId: string;
     path: string[];
     score: JudgeScore;
+    fitness?: FitnessScore;
   }>;
   startedAt: string;
   completedAt?: string;

@@ -2,6 +2,7 @@ import type {
   CodexExecutionResult,
   DebateRound,
   DebateTranscript,
+  FitnessScore,
   JudgeScore,
   NodeContext,
   TreeNode,
@@ -31,6 +32,7 @@ export interface InspectorViewModel {
   leaf?: {
     executionResult?: CodexExecutionResult;
     score?: JudgeScore;
+    fitness?: FitnessScore;
     filesChanged: string[];
   };
 }
@@ -62,6 +64,7 @@ export function buildInspector(node: TreeNode): InspectorViewModel {
         ? {
             executionResult: node.executionResult,
             score: node.score,
+            ...(node.fitness ? { fitness: node.fitness } : {}),
             filesChanged: node.executionResult?.filesChanged ?? [],
           }
         : undefined,

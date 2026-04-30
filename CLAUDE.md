@@ -2,15 +2,15 @@
 
 ## Project Overview
 
-Tree-of-Thought agent orchestration for software development, with leaf execution handled by a configurable execution layer. A CLI tool where a core panel plus intent-selected specialists debate solutions in round-table format, branch when grounded alternatives surface, optionally pause for a human plan review, execute leaf solutions, score results with an LLM judge, and visualize saved runs in a local browser UI.
+Tree-of-Thought agent orchestration for software development, with leaf execution handled by a configurable execution layer. A CLI tool where a core panel plus intent-selected specialists decompose an intent into a dossier, debate solutions in round-table format, branch when grounded alternatives surface, optionally pause for a human plan review, execute or synthesize leaf solutions, run configured verification checks, rank implementations by evidence-aware fitness, and visualize saved runs in a local browser UI.
 
 ## Architecture (3 Layers)
 
 ```
 Interface: CLI + saved-run UI (src/cli/, src/ui/) — commands, local browser viewer
-Layer 1: Orchestrator (src/orchestrator/) — tree traversal, branching, state
+Layer 1: Orchestrator + analyzer (src/orchestrator/, src/analyzer/) — intent dossier, traversal, branching, pruning, state
 Layer 2: Agent Panel (src/agents/, src/debate/) — round-table debate engine
-Layer 3: Execution (src/execution/, src/judge/) — Codex SDK + LLM scoring
+Layer 3: Execution (src/execution/, src/verification/, src/judge/) — Codex SDK + verification + LLM/fitness scoring
 ```
 
 ## Tech Stack
@@ -29,13 +29,17 @@ src/
 ├── cli/index.ts              # CLI entry point (commander)
 ├── types/index.ts            # Core type definitions (TreeNode, RunState, etc.)
 ├── schemas/index.ts          # Zod schemas for LLM response validation
+├── analyzer/                 # Intent decomposition, dossier, run-mode and specialist selection
 ├── utils/retry.ts            # Exponential-backoff retry wrapper
 ├── utils/cost.ts             # Pre-run token/USD estimator
+├── utils/pruning.ts          # Confidence/relevance pruning and depth schedules
 ├── agents/definitions.ts     # Agent system prompts + role configs
 ├── debate/engine.ts          # Round-table debate engine
 ├── orchestrator/orchestrator.ts  # Main tree orchestration loop
 ├── execution/codex-client.ts # Codex SDK integration
+├── verification/runner.ts    # Post-leaf verification command runner
 ├── judge/judge.ts            # LLM scoring engine
+├── judge/fitness.ts          # Evidence-aware deterministic fitness scorer
 ├── persistence/file-store.ts # JSON file persistence
 └── ui/                       # Saved-run browser UI (server, page, layout helpers)
 ```
@@ -44,7 +48,11 @@ src/
 
 ```bash
 npm install                    # Install deps
+npm run docs:check             # Ensure code-impacting changes update README/AGENTS/CLAUDE/docs
+npm test                       # docs:check + Vitest
 npx tsx src/cli/index.ts run "<intent>" --depth 3 --branching 2  # Run
+npx tsx src/cli/index.ts run "<intent>" --verify "npm test" --verify "npm run typecheck"  # Run leaf checks
+npx tsx src/cli/index.ts run "<intent>" --prune-schedule "0:0.45,2:0.7,4:0.85"  # Depth-aware pruning
 npx tsx src/cli/index.ts run "<intent>" --interactive-plan  # Run with human review before leaf execution
 npx tsx src/cli/index.ts list  # List runs
 npx tsx src/cli/index.ts show <run-id>  # Show results
@@ -55,30 +63,33 @@ npx tsx src/cli/index.ts resume <run-id>  # Resume
 
 ## How It Works
 
-1. Human provides intent → root node created
-2. At each node: agents debate in rounds (round-robin, each speaks once per round)
-3. Moderator assesses after each round: consensus / diverging / continue
-4. If diverging → tree branches (each alternative = child node)
-5. If consensus → single child, go deeper
-6. At max depth → candidate leaves are collected
-7. If `--interactive-plan` is enabled → human reviews each candidate leaf once: proceed, revise with a new prompt, or kill the branch
-8. Surviving leaf nodes are submitted to Codex for implementation
-9. LLM Judge scores each leaf on 6 dimensions (functional completeness, architectural quality, test coverage, intent alignment, real-world fit, simplicity)
-10. Results ranked by weighted composite score
-11. Saved runs can be inspected visually with `cto ui`
+1. Human provides intent + optional verified ground truth
+2. Analyzer decomposes the intent, builds an intent dossier, classifies implementation vs exploration mode, and selects specialists
+3. Root node is created with dossier, decomposition, ground truth, and selected panel in context
+4. At each node: agents debate in rounds (round-robin, each speaks once per round)
+5. Moderator assesses after each round: consensus / diverging / continue
+6. If diverging → tree branches (each alternative = child node), after prune threshold/schedule filtering
+7. If consensus → single child, go deeper
+8. At max depth → candidate leaves are collected
+9. If `--interactive-plan` is enabled → human reviews each candidate leaf once: proceed, revise with a new prompt, or kill the branch
+10. Implementation leaves are submitted to Codex; exploration leaves produce structured synthesis documents
+11. Local implementation leaves run configured verification commands when provided
+12. LLM Judge scores each implementation leaf on 6 dimensions and deterministic fitness combines judge + verification evidence
+13. Results are ranked by fitness when present, otherwise by judge score; saved runs can be inspected with `cto ui`
 
 ## Key Design Patterns
 
 - **Branching is organic:** Agents surface alternatives via their debate contributions. The moderator (separate LLM call) detects divergence and forks. No hard-coded branching rules.
-- **Context accumulates:** Each child inherits parent context + debate summary. Leaf nodes get the full ancestor path as implementation context.
+- **Context accumulates:** Each child inherits parent context + debate summary. Leaf nodes get the full ancestor path, intent decomposition, dossier, ground truth, and locked branch decisions as implementation or synthesis context.
 - **Human plan gate is opt-in:** `--interactive-plan` pauses before execution. Human revisions create a `human-revision` child that gets another CTO debate; killed branches are marked `pruned`.
-- **Brute force exploration (v1):** All branches explored. MCTS-style pruning is planned for v2.
+- **Pruning is configurable:** Moderator confidence/relevance controls branch survival, and `--prune-schedule` can use lower thresholds early and stricter thresholds deeper in the tree.
+- **Fitness beats rhetoric:** Judge scores remain visible, but configured verification results and deterministic fitness determine final implementation ranking.
 - **State persistence:** Tree saved to disk after every node. Runs are resumable and viewable through `cto ui`.
-- **UI boundary:** The saved-run UI is read-only. It uses local JSON routes over `.cambrian-tree` state and validates run IDs before loading files.
+- **UI boundary:** The saved-run UI reads local JSON state and writes only explicit browser review control files; the orchestrator remains the canonical state writer and validates run IDs before loading files.
 
 ## Current Status
 
-**Phases 1–4, interactive plan gate, and saved-run UI complete.** The CLI runs end-to-end with parallel leaf execution, pre-run cost estimation, branch pruning by moderator confidence, optional human review before execution, Codex usage breakdown, and a local browser UI for inspecting saved trees. Use `--dry-run` for tree-shape testing without LLM or Codex calls.
+**Phases 1–4, evolutionary foundation, interactive plan gate, and saved-run UI complete.** The CLI runs end-to-end with intent decomposition/dossiers, dynamic specialist selection, verified ground-truth inputs, progressive branch pruning, parallel leaf execution, optional post-leaf verification, fitness ranking, pre-run cost estimation, optional human review before execution, Codex usage breakdown, and a local browser UI for inspecting saved trees. Use `--dry-run` for tree-shape testing without LLM, verification, or Codex calls.
 
 ## Work Plan
 
@@ -112,6 +123,19 @@ npx tsx src/cli/index.ts resume <run-id>  # Resume
 - [x] Codex token usage breakdown — `CodexExecutionResult.usage` captures input / cached / output / reasoning tokens per leaf; aggregated as `RunState.codexUsageTotal` and printed in the final summary.
 - [x] Early-consensus / branch-decision lock — moderator now follows an explicit decision procedure (list live alternatives → DIVERGING / CONSENSUS / CONTINUE). Round-1 consensus is fine when nothing is alive; alternatives named in the original intent count as live. When a node branches, the chosen alternative is injected into descendants' `architectureDecisions` as `Chosen branch: <label>`, picked up by the agent + moderator prompts' Locked Decisions sections so children stay within their parent's choice. Net effect on test prompts: convergent (~93% fewer debate tokens, same quality); divergent (~65% faster than the cross-pollinating version, cleaner per-branch leaves).
 
+### Evolutionary foundation ✅
+- [x] Intent dossier — `src/analyzer/intent-dossier.ts` converts the intent and decomposition into goal, user value, non-goals, constraints, acceptance criteria, required checks, risk areas, known unknowns, success signals, and failure modes.
+- [x] Verification runner — `--verify <command>` can be repeated; commands run in local leaf artifact directories with timeout, stdout/stderr capture, and required pass/fail summaries.
+- [x] Fitness scoring — `src/judge/fitness.ts` combines verification, judge dimensions, uncertainty, risk reduction, and cost efficiency; required verification failures cap winning scores.
+- [x] Progressive pruning — `--prune-schedule` selects the nearest depth threshold so early alternatives can survive while late weak branches are cut.
+- [x] Fitness-aware display — final CLI summary, `cto tree`, saved-run list, tree badges, and node inspector prefer fitness when present while preserving judge details.
+- [x] Dry-run/cloud safeguards — dry-runs skip verification; Codex Cloud submissions record that local verification waits until cloud tasks are applied locally.
+
+### Documentation impact guard ✅
+- [x] `npm run docs:check` compares branch/worktree changes against the base branch and fails when code-impacting files change without `README.md`, `AGENTS.md`, `CLAUDE.md`, or `docs/**` updates.
+- [x] `npm test` runs `docs:check` before Vitest so documentation drift is caught in the normal verification loop.
+- [x] `DOCS_IMPACT=none npm run docs:check` is the explicit escape hatch for genuinely mechanical changes with no user-facing, agent-facing, or architecture impact.
+
 ### Interactive plan gate ✅
 - [x] `--interactive-plan` pauses after debate traversal and before implementation or synthesis.
 - [x] Human can proceed, kill a branch, or revise once with a new prompt.
@@ -121,9 +145,9 @@ npx tsx src/cli/index.ts resume <run-id>  # Resume
 
 ### Saved-run UI ✅
 - [x] `cto ui [run-id]` launches a local browser explorer for `.cambrian-tree` runs
-- [x] Saved run picker with status, leaf count, and best score
-- [x] SVG tree canvas with node selection, phase/status styling, score badges, zoom controls, and show-pruned toggle
-- [x] Node inspector tabs for summary, debate, context, and leaf execution/scoring details
+- [x] Saved run picker with status, leaf count, and best fitness/score
+- [x] SVG tree canvas with node selection, phase/status styling, fitness-aware score badges, zoom controls, and show-pruned toggle
+- [x] Node inspector tabs for summary, debate, context, and leaf execution/scoring/fitness details
 - [x] Local JSON API routes with run-id validation before state loading
 
 ## Conventions
@@ -134,6 +158,7 @@ npx tsx src/cli/index.ts resume <run-id>  # Resume
 - Types go in `src/types/index.ts`
 - Error handling: wrap LLM calls in try/catch, fallback gracefully, never crash the tree traversal
 - Console output: use chalk for colour, ora for spinners, keep output readable
+- Code-impacting changes should update `README.md`, `AGENTS.md`, `CLAUDE.md`, or `docs/**`; `npm test` enforces this through `npm run docs:check`
 
 ## Environment Variables
 
@@ -149,6 +174,8 @@ Use vitest. Current coverage includes saved-run UI helpers and server behavior:
 - `src/ui/server.ts`
 - interactive plan gate behavior in `tests/orchestrator/orchestrator.test.ts`
 - prompt propagation for human revisions in `tests/agents/definitions.test.ts`, `tests/execution/codex-client.test.ts`, and `tests/synthesis/synthesizer.test.ts`
+- intent decomposition/dossier, pruning schedule parsing, verification runner, fitness scoring, and fitness-aware UI summaries
+- documentation drift guard behavior in `tests/docs/impact-check.test.ts`
 
 When adding more:
 - Unit tests for `parseAgentResponse`, `buildAgentPrompt`, moderator JSON parsing
@@ -156,6 +183,6 @@ When adding more:
 
 ## Known Issues
 
-- Moderator prompt uses template literal placeholders (`${maxRounds}`) but replaced via string replace — fragile
-- `isLeaf()` logic may have edge cases at depth boundaries
-- No input validation on CLI args
+- Codex Cloud execution records task IDs, but polling and auto-applying diffs are still manual.
+- Verification commands are intentionally skipped for cloud submissions until a task has been applied locally.
+- The saved-run UI is local-only and not authentication-protected; bind it only where localhost access is appropriate.

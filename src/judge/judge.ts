@@ -4,7 +4,7 @@
  */
 
 import OpenAI from "openai";
-import type { TreeNode, JudgeScore, LLMUsage } from "../types/index.js";
+import type { TreeNode, JudgeScore, LLMUsage, NodeContext } from "../types/index.js";
 import { JudgeScoreSchema } from "../schemas/index.js";
 import { withRetry } from "../utils/retry.js";
 import { addUsageFromResponse, emptyUsage } from "../utils/usage.js";
@@ -38,12 +38,14 @@ const JUDGE_SYSTEM_PROMPT = `You are an expert software engineering judge. You e
 - 1: Barely related to original intent
 
 ### 5. Real-World Fit (weight: 0.15)
-When domain ground truth is provided: evaluate whether the solution correctly handles the real data formats, schema, and API contracts specified.
-When no domain ground truth is provided: evaluate whether the solution degrades gracefully when input columns/fields are missing or unexpected, and avoids assuming data shapes that may not exist in practice.
-- 10: Perfectly handles real-world data; required columns match verified schema; missing optional columns handled with warnings not crashes
-- 7: Mostly handles real data; one or two assumptions that may not hold; or no domain facts provided (neutral)
-- 4: Makes assumptions that contradict known domain facts, or treats optional/absent fields as required
-- 1: Solution would immediately crash against realistic input (e.g. requires columns that don't exist in the actual export format)
+When domain ground truth is provided: evaluate whether the solution correctly satisfies the stated constraints, protocols, schemas, and behavioral requirements.
+For data tasks: verify required fields/columns are handled and optional ones degrade gracefully.
+For protocol/API tasks: verify named behavioral constraints (convergence, reconnect, error handling, idempotency) are implemented.
+When no domain ground truth is provided: evaluate whether the solution degrades gracefully under missing or unexpected input.
+- 10: All named constraints and behavioral requirements satisfied; required contracts correctly implemented; edge cases from the stated constraints are handled
+- 7: Most constraints satisfied; one or two assumptions that may not hold in all production scenarios
+- 4: Several constraints violated or assumed away; solution requires conditions the intent does not guarantee
+- 1: Solution would immediately fail against realistic usage or directly violates stated constraints
 
 ### 6. Simplicity (weight: 0.10)
 - 10: Elegant, minimal complexity for the requirements
@@ -80,6 +82,10 @@ export class Judge {
     return { ...this.usage };
   }
 
+  get systemPrompt(): string {
+    return JUDGE_SYSTEM_PROMPT;
+  }
+
   async score(node: TreeNode): Promise<JudgeScore> {
     const ctx = node.context;
     const result = node.executionResult;
@@ -89,13 +95,7 @@ export class Judge {
 
     if (this.dryRun) return this.mockScore(node);
 
-    const domainFactsSection = ctx.domainFacts
-      ? `## Domain Ground Truth (verified facts — use these to evaluate Real-World Fit)
-Domain: ${ctx.domainFacts.domain}
-${ctx.domainFacts.schemas?.length ? `Schemas:\n${ctx.domainFacts.schemas.map((s) => `- ${s.name}: ${s.fields.map((f) => `${f.name}(${f.type}${f.required ? ",required" : ""})`).join(", ")}`).join("\n")}` : ""}
-${ctx.domainFacts.knownAbsences.length ? `Known Absences (these fields do NOT exist):\n${ctx.domainFacts.knownAbsences.map((a) => `- ${a}`).join("\n")}` : ""}
-${ctx.domainFacts.constraints.length ? `Constraints:\n${ctx.domainFacts.constraints.map((c) => `- ${c}`).join("\n")}` : ""}`
-      : "## Domain Ground Truth\nNone provided. Evaluate Real-World Fit based on general robustness to missing or unexpected input.";
+    const domainFactsSection = this.buildDomainFactsSection(ctx);
 
     const userPrompt = `# Solution to Judge
 
@@ -155,6 +155,40 @@ Score this solution against all six rubrics. Pay special attention to Real-World
     } catch {
       return this.failedScore("Judge scoring failed — could not parse LLM response");
     }
+  }
+
+  private buildDomainFactsSection(ctx: NodeContext): string {
+    if (ctx.domainFacts) {
+      const { domainFacts: df } = ctx;
+      return [
+        `## Domain Ground Truth (verified facts — use these to evaluate Real-World Fit)`,
+        `Domain: ${df.domain}`,
+        df.schemas?.length
+          ? `Schemas:\n${df.schemas.map((s) => `- ${s.name}: ${s.fields.map((f) => `${f.name}(${f.type}${f.required ? ",required" : ""})`).join(", ")}`).join("\n")}`
+          : "",
+        df.knownAbsences.length
+          ? `Known Absences (these fields do NOT exist):\n${df.knownAbsences.map((a) => `- ${a}`).join("\n")}`
+          : "",
+        df.constraints.length
+          ? `Constraints:\n${df.constraints.map((c) => `- ${c}`).join("\n")}`
+          : "",
+      ].filter(Boolean).join("\n");
+    }
+
+    const constraints = [
+      ...(ctx.acceptanceCriteria ?? []),
+      ...(ctx.architectureDecisions ?? []).filter((d) => /must|should|required|guarantee/i.test(d)),
+    ];
+
+    if (constraints.length > 0) {
+      return [
+        `## Domain Ground Truth (inferred from debate — use these to evaluate Real-World Fit)`,
+        `Domain: ${ctx.originalIntent.slice(0, 120)}`,
+        `Constraints:\n${constraints.map((c) => `- ${c}`).join("\n")}`,
+      ].join("\n");
+    }
+
+    return "## Domain Ground Truth\nNone provided. Evaluate Real-World Fit based on general robustness to missing or unexpected input.";
   }
 
   private mockScore(node: TreeNode): JudgeScore {

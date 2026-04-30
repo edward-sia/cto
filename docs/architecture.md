@@ -14,7 +14,7 @@ Three layers with strict downward dependencies:
 ┌────────────────────▼────────────────────────┐
 │  Layer 1 — Orchestrator                     │
 │  src/orchestrator/orchestrator.ts           │
-│  Tree traversal · branching · state mgmt    │
+│  Intent dossier · traversal · pruning       │
 └────────────────────┬────────────────────────┘
                      │
 ┌────────────────────▼────────────────────────┐
@@ -27,8 +27,9 @@ Three layers with strict downward dependencies:
 ┌────────────────────▼────────────────────────┐
 │  Layer 3 — Execution & Judging              │
 │  src/execution/codex-client.ts             │
-│  src/judge/judge.ts                         │
-│  Codex SDK · LLM scoring                   │
+│  src/verification/runner.ts                 │
+│  src/judge/judge.ts · src/judge/fitness.ts │
+│  Codex SDK · verification · fitness scoring│
 └─────────────────────────────────────────────┘
 ```
 
@@ -36,7 +37,8 @@ Three layers with strict downward dependencies:
 
 ```mermaid
 flowchart TD
-    A([User intent]) --> B[Create root node\ndepth 0]
+    A([User intent]) --> A1[Intent decomposition\n+ intent dossier]
+    A1 --> B[Create root node\ndepth 0]
     B --> C{Debate round}
     C --> D[Each agent speaks\nin round-robin order]
     D --> E[Moderator assesses\nround transcript]
@@ -54,8 +56,12 @@ flowchart TD
     Gate -- kill --> P[Pruned branch\nexcluded from execution]
     Gate -- revise once --> R[human-revision child\nwith human prompt]
     R --> C
-    K --> L[LLM Judge scores\n6 dimensions]
-    L --> M([Ranked results])
+    K --> V{Verification commands?}
+    V -- local run --> VC[Run checks in leaf artifact dir]
+    V -- dry-run/cloud/no checks --> L
+    VC --> L[LLM Judge scores\n6 dimensions]
+    L --> FS[Compute fitness\nfrom judge + evidence]
+    FS --> M([Ranked results])
     M --> N[Saved run UI\ncto ui]
 ```
 
@@ -74,7 +80,7 @@ flowchart LR
     Run --> Inspector["Node inspector tabs"]
 ```
 
-The UI keeps browser-specific behavior isolated in `src/ui/page.ts`, while testable data shaping lives in small pure modules:
+The UI prefers fitness scores when present, while still exposing the underlying judge composite and rationale in the inspector. Browser-specific behavior stays isolated in `src/ui/page.ts`, while testable data shaping lives in small pure modules:
 
 - `src/ui/tree-layout.ts` — flattens `TreeNode` hierarchies and computes deterministic SVG positions.
 - `src/ui/run-summary.ts` — turns `RunState` into saved-run list rows.
@@ -100,7 +106,7 @@ stateDiagram-v2
     consensus --> pending : interactive revise child
     consensus --> executing : isLeaf()
     executing --> completed : Codex returns
-    completed --> scored : judge.score()
+    completed --> scored : verify + judge + fitness
     scored --> [*]
 ```
 
@@ -139,6 +145,8 @@ sequenceDiagram
 
 Agents emit structured updates using `CONTEXT_UPDATE [field]: value` lines. These are parsed, accumulated across all rounds, and merged into every child node's `NodeContext` so downstream phases have richer context.
 
+Before the root node is created, `IntentDossierBuilder` converts the original intent and decomposition into the run's stable fitness target: goal, user value, non-goals, constraints, acceptance criteria, required checks, risk areas, known unknowns, success signals, and failure modes. The dossier is rendered into later debate, synthesis, implementation, judging, and fitness context.
+
 ```
 CONTEXT_UPDATE [prd]: The API must support pagination via cursor-based tokens
 CONTEXT_UPDATE [acceptance-criteria]: Given a valid auth token, when GET /todos is called, then it returns 200 with an array
@@ -172,15 +180,17 @@ A run with `--depth 4 --branching 2` on *"Build a REST API"*:
 root (depth 0) — requirements debate
 ├── REST approach (depth 1) — architecture debate
 │   ├── PostgreSQL backend (depth 2) — implementation debate
-│   │   └── leaf → Codex exec → score 8.2/10 🥇
+│   │   └── leaf → Codex exec → verify → fitness 8.9/10
 │   └── MongoDB backend (depth 2) — implementation debate
-│       └── leaf → Codex exec → score 6.7/10 🥉
+│       └── leaf → Codex exec → verify → fitness 6.2/10
 └── GraphQL approach (depth 1) — architecture debate
     ├── Apollo Server (depth 2) — implementation debate
-    │   └── leaf → Codex exec → score 7.8/10 🥈
+    │   └── leaf → Codex exec → verify → fitness 7.8/10
     └── Pothos schema-first (depth 2) — implementation debate
-        └── leaf → Codex exec → score 5.9/10
+        └── leaf → Codex exec → verify → fitness 5.9/10
 ```
+
+The judge composite remains available, but final implementation rankings use the deterministic fitness composite when it exists. Fitness weights verification evidence most heavily, then combines functional completeness, maintainability, simplicity, intent alignment, risk reduction, cost efficiency, and an uncertainty penalty. Required verification failures cap the composite so a branch with failing checks cannot win on judge prose alone.
 
 ## Agent Participation by Phase
 
@@ -232,12 +242,19 @@ src/
 ├── cli/index.ts              # CLI entry (commander) — run, list, show, tree, ui, resume
 ├── types/index.ts            # All shared types (TreeNode, RunConfig, HumanIntervention, JudgeScore, …)
 ├── schemas/index.ts          # Zod schemas for LLM response validation
+├── analyzer/
+│   ├── intent-decomposer.ts  # Extract load-bearing claims, unknowns, and feasibility flags
+│   ├── intent-dossier.ts     # Build the stable goal / acceptance / risk dossier
+│   └── task-analyzer.ts      # Select run mode and specialist agents
 ├── utils/retry.ts            # Exponential-backoff retry wrapper
+├── utils/pruning.ts          # Confidence × relevance pruning and depth schedules
 ├── agents/definitions.ts     # Agent system prompts + buildAgentPrompt + parseAgentResponse
 ├── debate/engine.ts          # DebateEngine — round-table loop + moderator assessment
 ├── orchestrator/orchestrator.ts  # TreeOrchestrator — main loop, interactive gate, SIGINT, token budget
 ├── execution/codex-client.ts # CodexExecutor — SDK + CLI fallback
 ├── judge/judge.ts            # Judge — LLM scoring
+├── judge/fitness.ts          # Evidence-aware deterministic fitness scoring
+├── verification/runner.ts    # Post-leaf verification command runner
 ├── persistence/file-store.ts # FileStore — .cambrian-tree/<run-id>/state.json
 └── ui/                       # Local saved-run browser UI
     ├── server.ts             # HTTP server + JSON API routes

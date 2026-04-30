@@ -25,6 +25,14 @@ pnpm-debug.log*
 
 # Local scratch output
 node-*/
+ignore/
+
+# Private planning artifacts
+docs/superpowers/
+
+# Work in progress design system
+docs/design-system/
+tests/design-system/
 
 # Editor and OS files
 .DS_Store

@@ -2,6 +2,7 @@
   "name": "cambrian-tree-orchestrator",
   "version": "0.1.0",
   "description": "Cambrian Tree Orchestrator: Tree-of-Thought agent orchestration for software development",
+  "license": "Apache-2.0",
   "type": "module",
   "main": "dist/index.js",
   "bin": {

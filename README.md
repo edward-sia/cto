@@ -305,4 +305,8 @@ When interactive planning is enabled, `TreeNode.humanIntervention` records `proc
 
 **Live run monitor delivered:** `cto ui` launches a dependency-light local browser monitor for saved and running `.cambrian-tree` runs. It includes a run picker, dark SVG tree canvas, node selection, inspector tabs for summary/debate/context/leaf details, score badges, Codex usage totals, server-sent event updates for the selected run, browser controls for pending interactive plan reviews, local JSON/control API routes, and run-id validation before loading state.
 
+## License
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
+
 See [CLAUDE.md](CLAUDE.md) for the full work plan and known issues.

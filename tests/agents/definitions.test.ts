@@ -1,6 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { AGENT_DEFINITIONS, buildAgentPrompt } from "../../src/agents/definitions.js";
+import { AGENT_DEFINITIONS, buildAgentPrompt, parseAgentResponse } from "../../src/agents/definitions.js";
 import { AGENT_ROLES, PHASE_AGENTS } from "../../src/types/index.js";
+
+describe("parseAgentResponse", () => {
+  it("accumulates each qa-engineer test scenario into a separate acceptanceCriteria entry", () => {
+    const raw = `## Test Strategy
+Here is the plan.
+
+CONTEXT_UPDATE [acceptance-criteria]: Test: Concurrent inserts converge — Given two clients insert at the same offset simultaneously, when both ops reach the server, then both clients converge to identical document state
+CONTEXT_UPDATE [acceptance-criteria]: Test: Offline edit replay — Given a client accumulates edits while offline, when it reconnects, then all edits are applied without data loss
+CONTEXT_UPDATE [acceptance-criteria]: Test: Stale op resilience — Given a client submits an op at a stale version, when the server receives it, then it is transformed and applied correctly
+CONTEXT_UPDATE [test-strategy]: Unit tests for transform logic; integration tests for concurrent-edit convergence, offline replay, stale-op handling`;
+
+    const result = parseAgentResponse("qa-engineer", raw);
+
+    expect(result.contextUpdates?.acceptanceCriteria).toHaveLength(3);
+    expect(result.contextUpdates?.acceptanceCriteria?.[0]).toContain("Concurrent inserts converge");
+    expect(result.contextUpdates?.acceptanceCriteria?.[1]).toContain("Offline edit replay");
+    expect(result.contextUpdates?.acceptanceCriteria?.[2]).toContain("Stale op resilience");
+    expect(result.contextUpdates?.testStrategy).toContain("integration tests");
+  });
+});
 
 describe("buildAgentPrompt", () => {
   it("includes a human revision prompt in the debate context", () => {
@@ -64,6 +84,15 @@ describe("AGENT_DEFINITIONS", () => {
     expect(researcher).toContain("does not cite studies, benchmarks, libraries, or prior art unless they are present in the provided context");
     expect(researcher).toContain("mark it as something to verify");
     expect(AGENT_DEFINITIONS.researcher.does.join(" ")).not.toContain("prior debate");
+  });
+
+  it("instructs qa-engineer to emit one acceptance-criteria update per concrete test scenario in Given/When/Then format", () => {
+    const prompt = AGENT_DEFINITIONS["qa-engineer"].systemPrompt;
+    expect(prompt).toMatch(/one.*CONTEXT_UPDATE.*per.*scenario|each.*scenario.*CONTEXT_UPDATE|CONTEXT_UPDATE.*per.*scenario/i);
+    expect(prompt).toContain("Given");
+    expect(prompt).toContain("When");
+    expect(prompt).toContain("Then");
+    expect(prompt).toContain("Test:");
   });
 
   it("keeps fallback phase rosters core-only so optional specialists require analyzer selection", () => {

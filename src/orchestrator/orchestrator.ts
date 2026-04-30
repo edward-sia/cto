@@ -23,6 +23,7 @@ import type {
 } from "../types/index.js";
 import { PHASE_AGENTS } from "../types/index.js";
 import { addUsage, emptyUsage } from "../utils/usage.js";
+import { getPhaseForDepth } from "../utils/phase.js";
 import { AGENT_DEFINITIONS } from "../agents/definitions.js";
 import { TaskAnalyzer } from "../analyzer/task-analyzer.js";
 import { IntentDecomposer } from "../analyzer/intent-decomposer.js";
@@ -517,10 +518,7 @@ export class TreeOrchestrator {
   }
 
   private getPhaseForDepth(depth: number): TreePhase {
-    for (const [phase, [min, max]] of Object.entries(this.config.phaseDepths)) {
-      if (depth >= min && depth <= max) return phase as TreePhase;
-    }
-    return "validation";
+    return getPhaseForDepth(depth, this.config.maxDepth);
   }
 
   private isLeaf(node: TreeNode): boolean {

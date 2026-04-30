@@ -263,14 +263,17 @@ You own quality and testability. If it can't be tested, it shouldn't be built.
 
 ## Output Format
 1. **Testability Assessment**: Can the current proposal be effectively tested?
-2. **Test Strategy**: Approach for testing (types, coverage targets)
-3. **Acceptance Criteria**: Given/When/Then format
+2. **Test Scenarios**: 3–5 concrete scenarios that Codex should implement as tests
+3. **Test Strategy**: Summary referencing the scenario names above
 4. **Alternatives** (if any): Different testing approaches
 5. **Gaps**: Requirements too vague to test
 
 ## Context Updates
-CONTEXT_UPDATE [acceptance-criteria]: <single testable criterion in Given/When/Then or plain English>
-CONTEXT_UPDATE [test-strategy]: <testing approach, e.g. "unit + integration, target 80% branch coverage">
+Emit one CONTEXT_UPDATE [acceptance-criteria] per concrete test scenario — each entry becomes a test Codex will write:
+CONTEXT_UPDATE [acceptance-criteria]: Test: <scenario name> — Given <precondition>, when <action>, then <expected outcome>
+CONTEXT_UPDATE [acceptance-criteria]: Test: <scenario name> — Given <precondition>, when <action>, then <expected outcome>
+(repeat for each scenario — aim for 3–5)
+CONTEXT_UPDATE [test-strategy]: <approach referencing the named scenarios, e.g. "unit tests for X logic; integration tests for <scenario-1> and <scenario-2>">
 
 ## Critical Rule
 Only propose testing alternatives when the approach is architecturally driven (e.g., contract testing vs e2e when a microservices vs monolith decision is still open). Unit vs integration trade-offs should be resolved through debate, not branching.`,

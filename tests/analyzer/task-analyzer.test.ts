@@ -120,7 +120,39 @@ describe("TaskAnalyzer", () => {
       "security-engineer",
       "tech-lead",
       "developer",
+      "qa-engineer",
+      "code-reviewer",
     ]);
+  });
+
+  it("always includes qa-engineer and code-reviewer for implementation tasks", async () => {
+    const response = JSON.stringify({
+      runMode: "implementation",
+      selectedAgents: ["tech-lead", "developer", "frontend-engineer"],
+      rationale: "Frontend feature",
+    });
+    const openai = makeMockOpenAI(response);
+    const analyzer = new TaskAnalyzer(openai, "gpt-4o", false);
+
+    const result = await analyzer.analyze("Build a settings page");
+
+    expect(result.selectedAgents).toContain("qa-engineer");
+    expect(result.selectedAgents).toContain("code-reviewer");
+  });
+
+  it("does not inject qa-engineer or code-reviewer for exploration tasks", async () => {
+    const response = JSON.stringify({
+      runMode: "exploration",
+      selectedAgents: ["researcher", "business-analyst"],
+      rationale: "Research task",
+    });
+    const openai = makeMockOpenAI(response);
+    const analyzer = new TaskAnalyzer(openai, "gpt-4o", false);
+
+    const result = await analyzer.analyze("Research GraphQL vs REST trade-offs");
+
+    expect(result.selectedAgents).not.toContain("qa-engineer");
+    expect(result.selectedAgents).not.toContain("code-reviewer");
   });
 
   it("filters out hallucinated agent roles from LLM response", async () => {

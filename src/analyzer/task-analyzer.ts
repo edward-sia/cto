@@ -128,7 +128,7 @@ function normalizeSelectedAgents(
   }
 
   if (runMode === "implementation") {
-    return withRequiredAgents(deduped, ["tech-lead", "developer"]);
+    return withRequiredAgents(deduped, ["tech-lead", "developer", "qa-engineer", "code-reviewer"]);
   }
 
   if (!deduped.includes("researcher") && !deduped.includes("data-analyst")) {

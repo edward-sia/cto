@@ -238,6 +238,10 @@ export class TreeOrchestrator {
     this.runState = state;
     this.config = this.normalizeConfig({ ...state.config, ...this.configOverrides });
     this.runState.config = this.config;
+    this.codex = new CodexExecutor(this.config.workingDirectory, this.config.dryRun, {
+      cloudEnv: this.config.cloudEnv,
+      cloudAttempts: this.config.cloudAttempts,
+    });
     this.toolBroker = this.makeToolBroker();
 
     const pendingNodes = this.findPendingNodes(state.root);

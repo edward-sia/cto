@@ -56,11 +56,14 @@ export class ToolBroker {
     const requests: ToolRequest[] = [];
     const evidence: ToolEvidence[] = [];
     const groups = groupRequests(input.requests);
-    let completedThisRound = 0;
-    let runRequestCount = input.runRequestCount ?? input.existingRequests?.length ?? 0;
+    let attemptedThisRound = 0;
+    let runRequestCount =
+      input.runRequestCount ?? input.existingRequests?.filter((request) => consumesBudget(request.status)).length ?? 0;
     let nodeRequestCount =
       input.nodeRequestCount ??
-      input.existingRequests?.filter((request) => request.nodeId === input.nodeId).length ??
+      input.existingRequests?.filter(
+        (request) => request.nodeId === input.nodeId && consumesBudget(request.status)
+      ).length ??
       0;
 
     for (const group of groups) {
@@ -73,7 +76,7 @@ export class ToolBroker {
       requests.push(request);
 
       const skipReason = this.validateGroup(group, {
-        completedThisRound,
+        attemptedThisRound,
         runRequestCount,
         nodeRequestCount,
       });
@@ -85,7 +88,6 @@ export class ToolBroker {
 
       const existingEvidence = findEquivalentEvidence(input.existingEvidence ?? [], group);
       if (existingEvidence) {
-        mergeAdditionalRequesters(existingEvidence, group.requesters);
         markSkipped(request, "Equivalent evidence already exists.", this.timestamp());
         continue;
       }
@@ -97,15 +99,15 @@ export class ToolBroker {
       }
 
       request.status = "running";
+      attemptedThisRound += 1;
+      runRequestCount += 1;
+      nodeRequestCount += 1;
 
       try {
         const result = await adapter.execute(toAdapterRequest(group, input));
         request.status = "completed";
         request.completedAt = this.timestamp();
         evidence.push(this.createEvidence(input, request, group, result));
-        completedThisRound += 1;
-        runRequestCount += 1;
-        nodeRequestCount += 1;
       } catch (error) {
         request.status = "failed";
         request.reason = error instanceof Error ? error.message : String(error);
@@ -118,7 +120,7 @@ export class ToolBroker {
 
   private validateGroup(
     group: RequestGroup,
-    budget: { completedThisRound: number; runRequestCount: number; nodeRequestCount: number }
+    budget: { attemptedThisRound: number; runRequestCount: number; nodeRequestCount: number }
   ): string | undefined {
     if (!this.config.enabled) {
       return "Tool use is disabled.";
@@ -132,7 +134,7 @@ export class ToolBroker {
       return "Tool request query is empty.";
     }
 
-    if (budget.completedThisRound >= this.config.maxRequestsPerRound) {
+    if (budget.attemptedThisRound >= this.config.maxRequestsPerRound) {
       return "Skipped because round budget is exhausted.";
     }
 
@@ -243,17 +245,6 @@ function findEquivalentEvidence(evidence: ToolEvidence[], group: RequestGroup): 
   );
 }
 
-function mergeAdditionalRequesters(evidence: ToolEvidence, requesters: AgentRole[]): void {
-  const allRequesters = [evidence.requestedBy, ...evidence.additionalRequesters];
-
-  for (const requester of requesters) {
-    if (!allRequesters.includes(requester)) {
-      evidence.additionalRequesters.push(requester);
-      allRequesters.push(requester);
-    }
-  }
-}
-
 function toAdapterRequest(group: RequestGroup, input: ResolveRoundRequestsInput): ToolBrokerRequest {
   return {
     toolName: group.toolName,
@@ -267,4 +258,8 @@ function markSkipped(request: ToolRequest, reason: string, completedAt: string):
   request.status = "skipped";
   request.reason = reason;
   request.completedAt = completedAt;
+}
+
+function consumesBudget(status: ToolRequest["status"]): boolean {
+  return status === "running" || status === "completed" || status === "failed";
 }

@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import type { ToolEvidenceSource, ToolName } from "../types/index.js";
@@ -49,7 +50,7 @@ function repoSearchAdapter(workingDirectory: string): ToolAdapter {
     readOnly: true,
     execute(request) {
       const completed = new Date().toISOString();
-      const result = spawnSync("rg", ["-n", "--", request.query], {
+      const result = spawnSync("rg", ["-n", "-F", "--", request.query], {
         cwd: workingDirectory,
         encoding: "utf-8",
         timeout: 10_000,
@@ -61,13 +62,14 @@ function repoSearchAdapter(workingDirectory: string): ToolAdapter {
       const lines = stdout.split(/\r?\n/).filter(Boolean).slice(0, SEARCH_LINE_LIMIT);
       const limitations = ["Search is limited to the first 20 ripgrep matches."];
 
-      if (result.error) {
+      if (result.error || result.signal || (typeof result.status === "number" && result.status > 1)) {
+        const detail = result.error?.message ?? stderr.trim() ?? `rg exited with status ${result.status ?? "unknown"}`;
         return {
           summary: `Repository search failed for "${request.query}".`,
           findings: [],
           decisionRelevance: [],
           constraintsDiscovered: [],
-          risksDiscovered: [`repo-search failed: ${result.error.message}`],
+          risksDiscovered: [`repo-search failed: ${detail}`],
           openQuestions: [],
           sources: [],
           limitations: [...limitations, "ripgrep could not complete the search."],
@@ -75,10 +77,10 @@ function repoSearchAdapter(workingDirectory: string): ToolAdapter {
         };
       }
 
-      if (lines.length === 0) {
+      if (result.status === 1) {
         return {
           summary: `No repository matches found for "${request.query}".`,
-          findings: stderr.trim() ? [stderr.trim()] : [],
+          findings: [],
           decisionRelevance: [],
           constraintsDiscovered: [],
           risksDiscovered: [],
@@ -108,27 +110,28 @@ function repoReadAdapter(workingDirectory: string): ToolAdapter {
   return {
     toolName: "repo-read",
     readOnly: true,
-    execute(request) {
-      const resolvedPath = path.resolve(workingDirectory, request.query);
-      const rootPath = path.resolve(workingDirectory);
-      const relativePath = path.relative(rootPath, resolvedPath);
-
-      if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
-        return {
-          summary: `Refused to read path outside repository root: ${request.query}`,
-          findings: [],
-          decisionRelevance: [],
-          constraintsDiscovered: ["repo-read only reads paths under the working directory."],
-          risksDiscovered: ["Requested path escapes the repository root."],
-          openQuestions: [],
-          sources: [],
-          limitations: ["Path traversal outside the repository is not allowed."],
-          confidence: 0,
-        };
-      }
-
+    async execute(request) {
       try {
-        const content = readFileSync(resolvedPath, "utf-8").slice(0, TEXT_DECODER_LIMIT);
+        const rootPath = await realpath(workingDirectory);
+        const requestedPath = path.resolve(workingDirectory, request.query);
+        const targetPath = await realpath(requestedPath);
+        const relativePath = path.relative(rootPath, targetPath);
+
+        if (!isWithinRoot(rootPath, targetPath)) {
+          return {
+            summary: `Refused to read path outside repository root: ${request.query}`,
+            findings: [],
+            decisionRelevance: [],
+            constraintsDiscovered: ["repo-read only reads paths under the working directory."],
+            risksDiscovered: ["Requested path resolves outside the repository root."],
+            openQuestions: [],
+            sources: [],
+            limitations: ["Path traversal and symlink escapes outside the repository are not allowed."],
+            confidence: 0,
+          };
+        }
+
+        const content = (await readFile(targetPath, "utf-8")).slice(0, TEXT_DECODER_LIMIT);
         const lines = content.split(/\r?\n/).slice(0, FINDING_LINE_LIMIT);
         const findings = lines.map((line, index) => `${relativePath}:${index + 1}:${line}`);
 
@@ -165,6 +168,11 @@ function repoReadAdapter(workingDirectory: string): ToolAdapter {
       }
     },
   };
+}
+
+function isWithinRoot(rootPath: string, targetPath: string): boolean {
+  const relativePath = path.relative(rootPath, targetPath);
+  return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
 }
 
 function packageInfoAdapter(workingDirectory: string): ToolAdapter {

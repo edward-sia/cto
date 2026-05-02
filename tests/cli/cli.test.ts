@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("CLI", () => {
@@ -157,6 +159,88 @@ describe("CLI", () => {
     expect(error).toBeDefined();
     expect(error?.status).toBeGreaterThan(0);
     expect(error?.stderr?.toString()).toContain("Unknown tool(s): not-a-tool");
+  });
+
+  it("clears saved tool allowlist when resuming with no-tools", () => {
+    const runId = `cli-no-tools-${Date.now()}`;
+    const runDir = join(process.cwd(), ".cambrian-tree", runId);
+    const statePath = join(runDir, "state.json");
+
+    mkdirSync(runDir, { recursive: true });
+    try {
+      writeFileSync(statePath, JSON.stringify({
+        id: runId,
+        config: {
+          maxDepth: 1,
+          maxBranching: 1,
+          maxDebateRounds: 1,
+          llmProvider: "openai",
+          llmApiKeyEnv: "OPENAI_API_KEY",
+          reasoningModel: "gpt-4o",
+          judgeModel: "gpt-4o",
+          workingDirectory: process.cwd(),
+          phaseDepths: {
+            requirements: [0, 1],
+            architecture: [2, 3],
+            implementation: [4, 5],
+            validation: [6, 7],
+          },
+          dryRun: true,
+          interactivePlan: false,
+          toolUse: {
+            enabled: true,
+            allowlist: ["docs-fetch"],
+            maxRequestsPerNode: 6,
+            maxRequestsPerRound: 4,
+            maxRequestsPerRun: 30,
+            maxEvidenceItemsInPrompt: 8,
+            autoRunReadOnly: true,
+          },
+          leafConcurrency: 1,
+          pruneThreshold: 0.5,
+          verificationCommands: [],
+          verificationTimeoutMs: 300000,
+        },
+        intent: "Build a REST API",
+        root: {
+          id: "node-root",
+          parentId: null,
+          depth: 0,
+          phase: "requirements",
+          status: "pruned",
+          context: { originalIntent: "Build a REST API", ancestorSummaries: [] },
+          children: [],
+          branchLabel: "",
+          branchDescription: "",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+        leafNodeIds: [],
+        startedAt: "2026-01-01T00:00:00.000Z",
+        totalTokensUsed: 0,
+        status: "paused",
+        runMode: "implementation",
+        selectedAgents: [],
+      }), "utf-8");
+
+      execFileSync(
+        "npx",
+        ["tsx", "src/cli/index.ts", "resume", runId, "--dry-run", "--no-tools"],
+        {
+          cwd: process.cwd(),
+          encoding: "utf-8",
+          env: { ...process.env, FORCE_COLOR: "0" },
+          stdio: ["ignore", "pipe", "pipe"],
+        }
+      );
+
+      const saved = JSON.parse(readFileSync(statePath, "utf-8")) as {
+        config: { toolUse?: { enabled: boolean; allowlist: string[] } };
+      };
+      expect(saved.config.toolUse).toMatchObject({ enabled: false, allowlist: [] });
+    } finally {
+      rmSync(runDir, { recursive: true, force: true });
+    }
   });
 
   it("uses provider-specific default models in dry-run mode", () => {

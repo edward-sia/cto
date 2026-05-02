@@ -37,6 +37,8 @@ const AVG_INPUT_TOKENS_PER_MODERATOR_CALL = 3_000;
 const AVG_OUTPUT_TOKENS_PER_MODERATOR_CALL = 400;
 const AVG_INPUT_TOKENS_PER_JUDGE_CALL = 5_000;
 const AVG_OUTPUT_TOKENS_PER_JUDGE_CALL = 400;
+const AVG_INPUT_TOKENS_PER_SKETCH_CALL = 2_000;
+const AVG_OUTPUT_TOKENS_PER_SKETCH_CALL = 700;
 
 export interface CostEstimate {
   worstCaseNodes: number;
@@ -47,6 +49,9 @@ export interface CostEstimate {
   expectedDebateOutputTokens: number;
   expectedJudgeInputTokens: number;
   expectedJudgeOutputTokens: number;
+  expectedSketchInputTokens: number;
+  expectedSketchOutputTokens: number;
+  expectedExecutedLeaves: number;
   expectedTotalTokens: number;
   estimatedUsd: number;
   modelPrice: ModelPrice;
@@ -109,10 +114,21 @@ export function estimateRunCost(config: RunConfig): CostEstimate {
     expectedNodes * expectedRounds * (avgAgentsPerPhase * AVG_OUTPUT_TOKENS_PER_AGENT_CALL + AVG_OUTPUT_TOKENS_PER_MODERATOR_CALL)
   );
 
-  const expectedJudgeInputTokens = Math.round(expectedLeaves * AVG_INPUT_TOKENS_PER_JUDGE_CALL);
-  const expectedJudgeOutputTokens = Math.round(expectedLeaves * AVG_OUTPUT_TOKENS_PER_JUDGE_CALL);
+  const sketchExecutionTopN = config.sketchExecutionTopN ?? 2;
+  const enableSketchRanking = config.enableSketchRanking ?? true;
+  const expectedExecutedLeaves = enableSketchRanking
+    ? Math.min(Math.round(expectedLeaves), Math.max(1, sketchExecutionTopN))
+    : Math.round(expectedLeaves);
+  const expectedSketchInputTokens = enableSketchRanking
+    ? Math.round(expectedLeaves * AVG_INPUT_TOKENS_PER_SKETCH_CALL)
+    : 0;
+  const expectedSketchOutputTokens = enableSketchRanking
+    ? Math.round(expectedLeaves * AVG_OUTPUT_TOKENS_PER_SKETCH_CALL)
+    : 0;
+  const expectedJudgeInputTokens = Math.round(expectedExecutedLeaves * AVG_INPUT_TOKENS_PER_JUDGE_CALL);
+  const expectedJudgeOutputTokens = Math.round(expectedExecutedLeaves * AVG_OUTPUT_TOKENS_PER_JUDGE_CALL);
   const expectedTotalTokens =
-    expectedDebateInputTokens + expectedDebateOutputTokens + expectedJudgeInputTokens + expectedJudgeOutputTokens;
+    expectedDebateInputTokens + expectedDebateOutputTokens + expectedSketchInputTokens + expectedSketchOutputTokens + expectedJudgeInputTokens + expectedJudgeOutputTokens;
 
   const reasoning = getPrice(config.reasoningModel);
   const judge = getPrice(config.judgeModel);
@@ -121,11 +137,15 @@ export function estimateRunCost(config: RunConfig): CostEstimate {
     (expectedDebateInputTokens * reasoning.price.inputPerMTok +
       expectedDebateOutputTokens * reasoning.price.outputPerMTok) /
     1_000_000;
+  const sketchUsd =
+    (expectedSketchInputTokens * reasoning.price.inputPerMTok +
+      expectedSketchOutputTokens * reasoning.price.outputPerMTok) /
+    1_000_000;
   const judgeUsd =
     (expectedJudgeInputTokens * judge.price.inputPerMTok +
       expectedJudgeOutputTokens * judge.price.outputPerMTok) /
     1_000_000;
-  const estimatedUsd = debateUsd + judgeUsd;
+  const estimatedUsd = debateUsd + sketchUsd + judgeUsd;
 
   return {
     worstCaseNodes,
@@ -134,8 +154,11 @@ export function estimateRunCost(config: RunConfig): CostEstimate {
     expectedLeaves: Math.round(expectedLeaves),
     expectedDebateInputTokens,
     expectedDebateOutputTokens,
+    expectedSketchInputTokens,
+    expectedSketchOutputTokens,
     expectedJudgeInputTokens,
     expectedJudgeOutputTokens,
+    expectedExecutedLeaves,
     expectedTotalTokens,
     estimatedUsd,
     modelPrice: reasoning.price,
@@ -187,8 +210,8 @@ export function formatCostEstimate(estimate: CostEstimate, config: RunConfig): s
   const known = estimate.pricedModelKnown ? "" : " (model price unknown — used gpt-4o pricing as upper bound)";
   return [
     `Tree size:    ~${estimate.expectedNodes} nodes (worst case: ${estimate.worstCaseNodes}), ~${estimate.expectedLeaves} leaves (worst case: ${estimate.worstCaseLeaves})`,
-    `LLM tokens:   ~${estimate.expectedTotalTokens.toLocaleString()} total (${(estimate.expectedDebateInputTokens + estimate.expectedDebateOutputTokens).toLocaleString()} debate, ${(estimate.expectedJudgeInputTokens + estimate.expectedJudgeOutputTokens).toLocaleString()} judge)`,
+    `LLM tokens:   ~${estimate.expectedTotalTokens.toLocaleString()} total (${(estimate.expectedDebateInputTokens + estimate.expectedDebateOutputTokens).toLocaleString()} debate, ${(estimate.expectedSketchInputTokens + estimate.expectedSketchOutputTokens).toLocaleString()} sketch, ${(estimate.expectedJudgeInputTokens + estimate.expectedJudgeOutputTokens).toLocaleString()} judge)`,
     `LLM cost:     ~$${usd}${known}`,
-    `Codex calls:  ~${estimate.expectedLeaves} leaf executions (cost depends on Codex plan${config.cloudEnv ? `, ×${config.cloudAttempts ?? 1} cloud attempts` : ""})`,
+    `Codex calls:  ~${estimate.expectedExecutedLeaves} ranked leaf executions (from ~${estimate.expectedLeaves} sketched leaves; cost depends on Codex plan${config.cloudEnv ? `, ×${config.cloudAttempts ?? 1} cloud attempts` : ""})`,
   ].join("\n");
 }

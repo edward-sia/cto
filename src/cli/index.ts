@@ -465,8 +465,9 @@ program
     } else if (opts.tools === false) {
       toolUseOverride = {
         toolUse: {
-          ...(savedRun.config.toolUse ?? DEFAULT_TOOL_USE_CONFIG),
+          ...DEFAULT_RUN_CONFIG.toolUse!,
           enabled: false,
+          allowlist: [],
         },
       };
     }

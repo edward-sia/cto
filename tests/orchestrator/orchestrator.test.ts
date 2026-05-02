@@ -101,6 +101,8 @@ describe("TreeOrchestrator", () => {
       dryRun: true,
       maxDepth: 5,
       maxDebateRounds: 1,
+      maxBranching: 2,
+      pruneThreshold: 0,
       toolUse: {
         enabled: true,
         allowlist: ["docs-fetch"],
@@ -187,6 +189,65 @@ describe("TreeOrchestrator", () => {
     expect(leaves.length).toBeGreaterThan(0);
     expect(leaves.every((leaf) => leaf.executionResult?.success)).toBe(true);
     expect(leaves.every((leaf) => leaf.executionResult?.verification === undefined)).toBe(true);
+  });
+
+  it("sketches every leaf but executes only the top ranked leaves by default", async () => {
+    const orchestrator = new TreeOrchestrator(
+      {} as OpenAI,
+      {
+        dryRun: true,
+        maxDepth: 3,
+        maxDebateRounds: 1,
+        maxBranching: 2,
+        pruneThreshold: 0,
+        leafConcurrency: 2,
+      }
+    );
+
+    const state = await orchestrator.run("Build a REST API");
+    const leaves = collectNodes(state.root).filter((node) => node.children.length === 0 && node.status !== "pruned");
+    const sketched = leaves.filter((leaf) => leaf.implementationSketch);
+    const executed = leaves.filter((leaf) => leaf.executionResult);
+    const skipped = leaves.filter((leaf) => leaf.skippedExecutionReason);
+
+    expect(leaves).toHaveLength(4);
+    expect(sketched).toHaveLength(4);
+    expect(executed).toHaveLength(2);
+    expect(skipped).toHaveLength(2);
+    expect(state.rankedResults).toHaveLength(2);
+  });
+
+  it("selects the next skipped sketch as fallback when all top verified leaves fail", () => {
+    const orchestrator = new TreeOrchestrator(
+      {} as OpenAI,
+      {
+        dryRun: true,
+        verificationCommands: [{ id: "verify", command: "npm test", required: true, timeoutMs: 1000 }],
+      }
+    );
+    const root = {
+      id: "root",
+      parentId: null,
+      depth: 0,
+      phase: "requirements",
+      status: "branched",
+      context: { originalIntent: "x", ancestorSummaries: [] },
+      children: [
+        fakeLeaf("a", 8, undefined, 1),
+        fakeLeaf("b", 7, undefined, 1),
+        fakeLeaf("c", 6, "skipped", undefined),
+      ],
+      branchLabel: "",
+      branchDescription: "",
+      createdAt: "",
+      updatedAt: "",
+    } as TreeNode;
+
+    const fallback = (orchestrator as unknown as {
+      nextSketchFallback: (root: TreeNode, executed: TreeNode[]) => TreeNode | undefined;
+    }).nextSketchFallback(root, root.children.slice(0, 2));
+
+    expect(fallback?.id).toBe("c");
   });
 
   it("uses phase defaults when selected agents have no primary match for that phase", () => {
@@ -420,4 +481,50 @@ describe("TreeOrchestrator", () => {
 
 function collectNodes(node: TreeNode): TreeNode[] {
   return [node, ...node.children.flatMap((child) => collectNodes(child))];
+}
+
+function fakeLeaf(
+  id: string,
+  sketchScore: number,
+  skippedExecutionReason?: string,
+  requiredFailed?: number
+): TreeNode {
+  return {
+    id,
+    parentId: "root",
+    depth: 1,
+    phase: "validation",
+    status: "consensus",
+    context: { originalIntent: "x", ancestorSummaries: [] },
+    children: [],
+    branchLabel: id,
+    branchDescription: id,
+    sketchScore: {
+      leafId: id,
+      acceptanceCoverage: sketchScore,
+      verificationPlanQuality: sketchScore,
+      lowBlastRadius: sketchScore,
+      riskReduction: sketchScore,
+      complexityPenalty: 0,
+      uncertaintyPenalty: 0,
+      composite: sketchScore,
+      rationale: "test",
+    },
+    skippedExecutionReason,
+    executionResult: requiredFailed === undefined ? undefined : {
+      threadId: id,
+      success: true,
+      filesChanged: [],
+      output: "",
+      durationMs: 1,
+      verification: {
+        passed: 0,
+        failed: requiredFailed,
+        requiredFailed,
+        results: [],
+      },
+    },
+    createdAt: "",
+    updatedAt: "",
+  };
 }

@@ -21,19 +21,30 @@ import type {
   TaskAnalysis,
   DomainFacts,
   HumanPlanDecision,
+  CacheStats,
 } from "../types/index.js";
 import { PHASE_AGENTS } from "../types/index.js";
 import { addUsage, emptyUsage } from "../utils/usage.js";
 import { getPhaseForDepth } from "../utils/phase.js";
 import { getPruneThresholdForDepth } from "../utils/pruning.js";
+import { DEFAULT_MODEL_ASSIGNMENTS, defaultModelTiers, modelForStage, normalizeModelAssignments, normalizeModelTiers } from "../utils/model-routing.js";
 import { AGENT_DEFINITIONS } from "../agents/definitions.js";
 import { TaskAnalyzer } from "../analyzer/task-analyzer.js";
 import { IntentDecomposer } from "../analyzer/intent-decomposer.js";
 import { IntentDossierBuilder } from "../analyzer/intent-dossier.js";
 import { DebateEngine, type DebateProgressEvent } from "../debate/engine.js";
 import { CodexExecutor } from "../execution/codex-client.js";
+import { LeafSketcher } from "../execution/sketcher.js";
 import { computeFitnessScore } from "../judge/fitness.js";
 import { Judge } from "../judge/judge.js";
+import {
+  CACHE_PROMPT_VERSION,
+  DeterministicCache,
+  artifactHash,
+  buildCacheKey,
+  normalizeIntentInput,
+  repoFingerprint,
+} from "../persistence/deterministic-cache.js";
 import { FileStore } from "../persistence/file-store.js";
 import { Synthesizer } from "../synthesis/synthesizer.js";
 import { defaultToolAdapters } from "../tools/adapters.js";
@@ -65,11 +76,16 @@ export const DEFAULT_RUN_CONFIG: RunConfig = {
   llmApiKeyEnv: "OPENAI_API_KEY",
   reasoningModel: "gpt-4o",
   judgeModel: "gpt-4o",
+  modelTiers: defaultModelTiers("gpt-4o"),
+  modelAssignments: DEFAULT_MODEL_ASSIGNMENTS,
   workingDirectory: process.cwd(),
   phaseDepths: DEFAULT_PHASE_DEPTHS,
   dryRun: false,
   interactivePlan: false,
   toolUse: DEFAULT_TOOL_USE_CONFIG,
+  enableDeterministicCache: true,
+  enableSketchRanking: true,
+  sketchExecutionTopN: 2,
   leafConcurrency: 4,
   pruneThreshold: 0.5,
   verificationCommands: [],
@@ -118,6 +134,9 @@ export class TreeOrchestrator {
   private decomposer: IntentDecomposer;
   private dossierBuilder: IntentDossierBuilder;
   private synthesizer: Synthesizer;
+  private sketcher: LeafSketcher;
+  private cache: DeterministicCache;
+  private repoFingerprint: string;
   private toolBroker?: ToolBroker;
   private callbacks: OrchestratorCallbacks;
   private runState!: RunState;
@@ -132,27 +151,45 @@ export class TreeOrchestrator {
     this.configOverrides = config;
     this.config = this.normalizeConfig(config);
     this.store = new FileStore();
+    this.cache = new DeterministicCache({
+      cwd: this.config.workingDirectory,
+      enabled: this.config.enableDeterministicCache && !this.config.dryRun,
+    });
+    this.repoFingerprint = repoFingerprint(this.config.workingDirectory);
     this.toolBroker = this.makeToolBroker();
     this.codex = new CodexExecutor(this.config.workingDirectory, this.config.dryRun, {
       cloudEnv: this.config.cloudEnv,
       cloudAttempts: this.config.cloudAttempts,
     });
-    this.judge = new Judge(openai, this.config.judgeModel, this.config.dryRun);
-    this.analyzer = new TaskAnalyzer(openai, this.config.reasoningModel, this.config.dryRun);
-    this.decomposer = new IntentDecomposer(openai, this.config.reasoningModel, this.config.dryRun);
-    this.dossierBuilder = new IntentDossierBuilder(openai, this.config.reasoningModel, this.config.dryRun);
-    this.synthesizer = new Synthesizer(openai, this.config.reasoningModel, this.config.dryRun);
+    this.judge = new Judge(openai, modelForStage(this.config, "judge"), this.config.dryRun);
+    this.analyzer = new TaskAnalyzer(openai, modelForStage(this.config, "analyzer"), this.config.dryRun);
+    this.decomposer = new IntentDecomposer(openai, modelForStage(this.config, "decomposer"), this.config.dryRun);
+    this.dossierBuilder = new IntentDossierBuilder(openai, modelForStage(this.config, "dossier"), this.config.dryRun);
+    this.synthesizer = new Synthesizer(openai, modelForStage(this.config, "synthesis"), this.config.dryRun);
+    this.sketcher = new LeafSketcher(
+      openai,
+      modelForStage(this.config, "sketch"),
+      modelForStage(this.config, "sketchJudge"),
+      this.config.dryRun
+    );
     this.callbacks = callbacks;
   }
 
   private normalizeConfig(config: Partial<RunConfig>): RunConfig {
+    const merged = { ...DEFAULT_RUN_CONFIG, ...config };
     return {
-      ...DEFAULT_RUN_CONFIG,
-      ...config,
+      ...merged,
       toolUse: {
         ...DEFAULT_TOOL_USE_CONFIG,
         ...config.toolUse,
       },
+      modelTiers: normalizeModelTiers(
+        merged.reasoningModel,
+        config.modelTiers
+      ),
+      modelAssignments: normalizeModelAssignments(
+        config.modelAssignments
+      ),
     };
   }
 
@@ -165,13 +202,105 @@ export class TreeOrchestrator {
       : undefined;
   }
 
+  private async cached<T>(
+    kind: string,
+    model: string,
+    input: unknown,
+    compute: () => Promise<T>
+  ): Promise<T> {
+    const key = buildCacheKey({
+      kind,
+      provider: this.config.llmProvider,
+      model,
+      promptVersion: CACHE_PROMPT_VERSION,
+      input,
+      repoFingerprint: this.repoFingerprint,
+    });
+    const cached = await this.cache.get<T>(key);
+    if (cached !== undefined) {
+      this.syncCacheStats();
+      return cached;
+    }
+    const value = await compute();
+    await this.cache.set({
+      key,
+      kind,
+      value,
+      createdAt: new Date().toISOString(),
+      model,
+      promptVersion: CACHE_PROMPT_VERSION,
+      repoFingerprint: this.repoFingerprint,
+    });
+    this.syncCacheStats();
+    return value;
+  }
+
+  private async cachedArtifact<T>(
+    kind: string,
+    artifact: string,
+    input: unknown,
+    compute: () => Promise<T>,
+    model?: string
+  ): Promise<T> {
+    const hash = artifactHash(artifact);
+    const key = buildCacheKey({
+      kind,
+      provider: this.config.llmProvider,
+      model,
+      promptVersion: CACHE_PROMPT_VERSION,
+      input,
+      artifactHash: hash,
+    });
+    const cached = await this.cache.get<T>(key);
+    if (cached !== undefined) {
+      this.syncCacheStats();
+      return cached;
+    }
+    const value = await compute();
+    await this.cache.set({
+      key,
+      kind,
+      value,
+      createdAt: new Date().toISOString(),
+      model,
+      promptVersion: CACHE_PROMPT_VERSION,
+      artifactHash: hash,
+    });
+    this.syncCacheStats();
+    return value;
+  }
+
+  private cacheStats(): CacheStats {
+    return { ...this.cache.stats };
+  }
+
+  private syncCacheStats(): void {
+    if (this.runState) this.runState.cacheStats = this.cacheStats();
+  }
+
   async run(intent: string, domainFacts?: DomainFacts): Promise<RunState> {
     const runId = `run-${nanoid(10)}`;
-    const analysis = await this.analyzer.analyze(intent);
+    const normalizedIntent = normalizeIntentInput(intent);
+    const analysis = await this.cached(
+      "specialist-selection",
+      modelForStage(this.config, "analyzer"),
+      { intent: normalizedIntent },
+      () => this.analyzer.analyze(intent)
+    );
     this.callbacks.onAnalysisComplete?.(analysis);
 
-    const decomposition = await this.decomposer.decompose(intent);
-    const dossier = await this.dossierBuilder.build(intent, decomposition);
+    const decomposition = await this.cached(
+      "intent-decomposition",
+      modelForStage(this.config, "decomposer"),
+      { intent: normalizedIntent },
+      () => this.decomposer.decompose(intent)
+    );
+    const dossier = await this.cached(
+      "intent-dossier",
+      modelForStage(this.config, "dossier"),
+      { intent: normalizedIntent, decomposition },
+      () => this.dossierBuilder.build(intent, decomposition)
+    );
 
     const root = this.createNode(null, 0, {
       originalIntent: intent,
@@ -193,6 +322,7 @@ export class TreeOrchestrator {
       startedAt: new Date().toISOString(),
       totalTokensUsed: 0,
       llmUsage: emptyUsage(),
+      cacheStats: this.cacheStats(),
       status: "running",
       runMode: analysis.runMode,
       selectedAgents: analysis.selectedAgents,
@@ -241,11 +371,25 @@ export class TreeOrchestrator {
     this.runState = state;
     this.config = this.normalizeConfig({ ...state.config, ...this.configOverrides });
     this.runState.config = this.config;
+    this.cache = new DeterministicCache({
+      cwd: this.config.workingDirectory,
+      enabled: this.config.enableDeterministicCache && !this.config.dryRun,
+    });
+    this.repoFingerprint = repoFingerprint(this.config.workingDirectory);
+    this.toolBroker = this.makeToolBroker();
     this.codex = new CodexExecutor(this.config.workingDirectory, this.config.dryRun, {
       cloudEnv: this.config.cloudEnv,
       cloudAttempts: this.config.cloudAttempts,
     });
-    this.toolBroker = this.makeToolBroker();
+    this.judge = new Judge(this.openai, modelForStage(this.config, "judge"), this.config.dryRun);
+    this.synthesizer = new Synthesizer(this.openai, modelForStage(this.config, "synthesis"), this.config.dryRun);
+    this.sketcher = new LeafSketcher(
+      this.openai,
+      modelForStage(this.config, "sketch"),
+      modelForStage(this.config, "sketchJudge"),
+      this.config.dryRun
+    );
+    this.syncCacheStats();
 
     const pendingNodes = this.findPendingNodes(state.root);
     for (const node of pendingNodes) {
@@ -276,7 +420,16 @@ export class TreeOrchestrator {
     }
 
     if (this.runState.runMode === "implementation") {
-      await this.executeLeaves(root);
+      const leavesToExecute = this.config.enableSketchRanking
+        ? await this.sketchAndSelectLeaves(root)
+        : this.collectLeaves(root).filter((n) => n.status !== "pruned");
+      await this.executeLeaves(root, leavesToExecute);
+      const fallback = this.nextSketchFallback(root, leavesToExecute);
+      if (fallback) {
+        fallback.skippedExecutionReason = undefined;
+        await this.executeLeaves(root, [fallback]);
+      }
+      this.accumulateLLMUsage(this.sketcher.llmUsage);
       await this.judgeLeaves(root);
       this.accumulateLLMUsage(this.judge.llmUsage);
       this.runState.rankedResults = this.rankResults(root);
@@ -356,7 +509,8 @@ export class TreeOrchestrator {
 
     const debateEngine = new DebateEngine({
       openai: this.openai,
-      reasoningModel: this.config.reasoningModel,
+      reasoningModel: modelForStage(this.config, "debate"),
+      moderatorModel: modelForStage(this.config, "moderator"),
       maxDebateRounds: this.config.maxDebateRounds,
       maxBranching: this.config.maxBranching,
       dryRun: this.config.dryRun,
@@ -376,6 +530,7 @@ export class TreeOrchestrator {
     if (transcript.contextUpdates.toolEvidence?.length) {
       node.context.toolEvidence = transcript.contextUpdates.toolEvidence;
     }
+    await this.recordCompactDebateCache(node, transcript);
     this.runState.totalTokensUsed += transcript.tokenUsage;
     this.accumulateLLMUsage(transcript.llmUsage);
 
@@ -482,8 +637,70 @@ export class TreeOrchestrator {
     await this.processNode(child);
   }
 
-  private async executeLeaves(root: TreeNode): Promise<void> {
+  private async recordCompactDebateCache(node: TreeNode, transcript: NonNullable<TreeNode["debate"]>): Promise<void> {
+    if (!transcript.compactState) return;
+    const key = buildCacheKey({
+      kind: "compact-debate-summary",
+      provider: this.config.llmProvider,
+      model: modelForStage(this.config, "summarizer"),
+      promptVersion: CACHE_PROMPT_VERSION,
+      input: {
+        nodeContext: node.context,
+        rounds: transcript.rounds,
+      },
+      repoFingerprint: this.repoFingerprint,
+    });
+    await this.cache.set({
+      key,
+      kind: "compact-debate-summary",
+      value: transcript.compactState,
+      createdAt: new Date().toISOString(),
+      model: modelForStage(this.config, "summarizer"),
+      promptVersion: CACHE_PROMPT_VERSION,
+      repoFingerprint: this.repoFingerprint,
+    });
+    this.syncCacheStats();
+  }
+
+  private async sketchAndSelectLeaves(root: TreeNode): Promise<TreeNode[]> {
     const leaves = this.collectLeaves(root).filter((n) => n.status !== "pruned");
+    const tasks = leaves.map((leaf) => async () => {
+      leaf.implementationSketch = await this.sketcher.sketch(leaf);
+      leaf.sketchScore = await this.sketcher.score(leaf, leaf.implementationSketch);
+    });
+    await runWithConcurrency(tasks, this.config.leafConcurrency);
+
+    const ranked = [...leaves].sort((a, b) =>
+      (b.sketchScore?.composite ?? 0) - (a.sketchScore?.composite ?? 0)
+    );
+    const topN = this.config.sketchExecutionTopN ?? DEFAULT_RUN_CONFIG.sketchExecutionTopN ?? 2;
+    const selected = new Set(ranked.slice(0, Math.max(1, topN)).map((leaf) => leaf.id));
+    for (const leaf of ranked) {
+      if (selected.has(leaf.id)) {
+        leaf.skippedExecutionReason = undefined;
+      } else {
+        leaf.skippedExecutionReason = `Skipped before Codex execution: sketch ranked below top ${topN}.`;
+      }
+    }
+    await this.store.save(this.runState);
+    return ranked.filter((leaf) => selected.has(leaf.id));
+  }
+
+  private nextSketchFallback(root: TreeNode, executedLeaves: TreeNode[]): TreeNode | undefined {
+    if (!this.config.enableSketchRanking || this.config.verificationCommands.length === 0) return undefined;
+    const topN = this.config.sketchExecutionTopN ?? DEFAULT_RUN_CONFIG.sketchExecutionTopN ?? 2;
+    if (executedLeaves.length < Math.min(2, topN)) return undefined;
+    const allFailedRequired = executedLeaves.every((leaf) =>
+      !leaf.executionResult?.success || (leaf.executionResult.verification?.requiredFailed ?? 0) > 0
+    );
+    if (!allFailedRequired) return undefined;
+    return this.collectLeaves(root)
+      .filter((leaf) => leaf.skippedExecutionReason && leaf.sketchScore)
+      .sort((a, b) => (b.sketchScore?.composite ?? 0) - (a.sketchScore?.composite ?? 0))[0];
+  }
+
+  private async executeLeaves(root: TreeNode, leavesToExecute?: TreeNode[]): Promise<void> {
+    const leaves = leavesToExecute ?? this.collectLeaves(root).filter((n) => n.status !== "pruned");
     const tasks = leaves.map((leaf) => async () => {
       this.callbacks.onLeafExecuting?.(leaf.id);
       leaf.status = "executing";
@@ -491,8 +708,11 @@ export class TreeOrchestrator {
         leaf.executionResult = await this.codex.execute(leaf);
         if (this.config.verificationCommands.length > 0 && !this.config.dryRun && !this.config.cloudEnv) {
           const artifactDirectory = join(this.config.workingDirectory, leaf.id);
-          leaf.executionResult.verification = await new VerificationRunner(this.config.verificationCommands).run(
-            artifactDirectory
+          leaf.executionResult.verification = await this.cachedArtifact(
+            "verification-result",
+            artifactDirectory,
+            { commands: this.config.verificationCommands },
+            () => new VerificationRunner(this.config.verificationCommands).run(artifactDirectory)
           );
         } else if (this.config.verificationCommands.length > 0 && this.config.cloudEnv) {
           leaf.executionResult.output +=
@@ -519,7 +739,18 @@ export class TreeOrchestrator {
   private async judgeLeaves(root: TreeNode): Promise<void> {
     const leaves = this.collectLeaves(root).filter((n) => n.executionResult && n.status !== "pruned");
     const tasks = leaves.map((leaf) => async () => {
-      const score = await this.judge.score(leaf);
+      const artifactDirectory = join(this.config.workingDirectory, leaf.id);
+      const score = await this.cachedArtifact(
+        "judge-result",
+        artifactDirectory,
+        {
+          nodeId: leaf.id,
+          context: leaf.context,
+          executionResult: leaf.executionResult,
+        },
+        () => this.judge.score(leaf),
+        modelForStage(this.config, "judge")
+      );
       leaf.score = score;
       if (leaf.executionResult) {
         leaf.fitness = computeFitnessScore(score, leaf.executionResult);

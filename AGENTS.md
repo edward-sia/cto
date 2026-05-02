@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Tree-of-Thought agent orchestration for software development, with leaf execution handled by a configurable execution layer. A CLI tool where a core panel plus intent-selected specialists decompose an intent into a dossier, debate solutions in round-table format, branch when grounded alternatives surface, optionally pause for a human plan review, execute or synthesize leaf solutions, run configured verification checks, rank implementations by evidence-aware fitness, and visualize saved runs in a local browser UI.
+Tree-of-Thought agent orchestration for software development, with leaf execution handled by a configurable execution layer. A CLI tool where a core panel plus intent-selected specialists decompose an intent into a dossier, debate solutions in round-table format, branch when grounded alternatives surface, optionally pause for a human plan review, sketch and rank implementation leaves before Codex execution, run configured verification checks, rank implementations by evidence-aware fitness, and visualize saved runs in a local browser UI.
 
 ## Architecture (3 Layers)
 
@@ -77,10 +77,11 @@ npx tsx src/cli/index.ts resume <run-id>  # Resume
 7. If consensus → single child, go deeper
 8. At max depth → candidate leaves are collected
 9. If `--interactive-plan` is enabled → human reviews each candidate leaf once: proceed, revise with a new prompt, or kill the branch
-10. Implementation leaves are submitted to Codex; exploration leaves produce structured synthesis documents
+10. Implementation leaves are sketched and ranked cheaply; the top ranked leaves are submitted to Codex, while exploration leaves produce structured synthesis documents
 11. Local implementation leaves run configured verification commands when provided
-12. LLM Judge scores each implementation leaf on 6 dimensions and deterministic fitness combines judge + verification evidence
-13. Results are ranked by fitness when present, otherwise by judge score; saved runs can be inspected with `cto ui`
+12. If selected leaves all fail required verification, the next ranked skipped sketch is executed as a fallback
+13. LLM Judge scores each executed implementation leaf on 6 dimensions and deterministic fitness combines judge + verification evidence
+14. Results are ranked by fitness when present, otherwise by judge score; saved runs can be inspected with `cto ui`
 
 ## LLM Provider Support
 
@@ -99,8 +100,10 @@ Provider metadata lives in `src/providers/llm-provider.ts`; persisted runs store
 ## Key Design Patterns
 
 - **Branching is organic:** Agents surface alternatives via their debate contributions. The moderator (separate LLM call) detects divergence and forks. No hard-coded branching rules.
-- **Context accumulates:** Each child inherits parent context + debate summary. Leaf nodes get the full ancestor path, intent decomposition, dossier, ground truth, and locked branch decisions as implementation or synthesis context.
+- **Context accumulates compactly:** Each child inherits parent context + debate summary. Later debate rounds receive compact prior state instead of the full prior transcript, while full transcripts remain saved for audit/UI.
 - **Agent-requested research tools:** Available when enabled with `--tools`; personas may request read-only evidence during debate, but execution is mediated by the ToolBroker and persisted as tool evidence.
+- **Explore broadly, execute narrowly:** Implementation leaves are all sketched and ranked; by default only the top two are executed, and skipped leaves retain sketch evidence plus the skipped reason.
+- **Deterministic cache:** Stable selection, decomposition, dossier, compact-summary, verification, and judge outputs are cached under `.cambrian-tree/cache/` using prompt/model/provider and repo or artifact fingerprints.
 - **Human plan gate is opt-in:** `--interactive-plan` pauses before execution. Human revisions create a `human-revision` child that gets another CTO debate; killed branches are marked `pruned`.
 - **Pruning is configurable:** Moderator confidence/relevance controls branch survival, and `--prune-schedule` can use lower thresholds early and stricter thresholds deeper in the tree.
 - **Fitness beats rhetoric:** Judge scores remain visible, but configured verification results and deterministic fitness determine final implementation ranking.
@@ -109,7 +112,7 @@ Provider metadata lives in `src/providers/llm-provider.ts`; persisted runs store
 
 ## Current Status
 
-**Phases 1–4, evolutionary foundation, interactive plan gate, and saved-run UI complete.** The CLI runs end-to-end with intent decomposition/dossiers, dynamic specialist selection, verified ground-truth inputs, progressive branch pruning, parallel leaf execution, optional post-leaf verification, fitness ranking, pre-run cost estimation, optional human review before execution, Codex usage breakdown, and a local browser UI for inspecting saved trees. Use `--dry-run` for tree-shape testing without LLM, verification, or Codex calls.
+**Phases 1–4, evolutionary foundation, cost-control foundation, interactive plan gate, and saved-run UI complete.** The CLI runs end-to-end with intent decomposition/dossiers, dynamic specialist selection, verified ground-truth inputs, progressive branch pruning, compact debate context, deterministic caching, sketch-first leaf ranking, narrowed Codex execution, optional post-leaf verification, fitness ranking, pre-run cost estimation, optional human review before execution, Codex usage breakdown, and a local browser UI for inspecting saved trees. Use `--dry-run` for tree-shape testing without LLM, verification, or Codex calls.
 
 **Multi-provider LLM routing is available.** OpenRouter, Google Gemini, and DeepSeek are supported through the shared OpenAI-compatible provider layer for debate, analysis, synthesis, and judging.
 
@@ -144,6 +147,13 @@ Provider metadata lives in `src/providers/llm-provider.ts`; persisted runs store
 - [x] Codex Cloud best-of-N — `--cloud-env <id> --cloud-attempts <n>` routes leaf execution through `codex cloud exec`. Cloud results must be applied locally with `codex cloud apply <task-id>` after the task completes (see executor output).
 - [x] Codex token usage breakdown — `CodexExecutionResult.usage` captures input / cached / output / reasoning tokens per leaf; aggregated as `RunState.codexUsageTotal` and printed in the final summary.
 - [x] Early-consensus / branch-decision lock — moderator now follows an explicit decision procedure (list live alternatives → DIVERGING / CONSENSUS / CONTINUE). Round-1 consensus is fine when nothing is alive; alternatives named in the original intent count as live. When a node branches, the chosen alternative is injected into descendants' `architectureDecisions` as `Chosen branch: <label>`, picked up by the agent + moderator prompts' Locked Decisions sections so children stay within their parent's choice.
+
+### Cost-control foundation ✅
+- [x] Internal model cascade — `RunConfig.modelTiers` and `modelAssignments` route analyzer, moderator, debate, sketch, synthesis, and judge stages without adding CLI flags; all tiers default to the selected model for compatibility.
+- [x] Compact debate context — `CompactDebateState` carries accepted facts, locked decisions, live alternatives, rejected alternatives, risks, verification ideas, and a concise last-round summary into later rounds.
+- [x] Deterministic cache — `.cambrian-tree/cache/` stores stable analysis, dossier, compact-summary, verification, and judge outputs keyed by prompt version, provider/model, normalized input, and repo/artifact fingerprints.
+- [x] Sketch-first execution — implementation leaves receive `LeafImplementationSketch` and `LeafSketchScore`; CTO executes the top two ranked sketches by default and records skipped execution reasons for the rest.
+- [x] Verification fallback — if selected leaves all fail required verification, CTO executes the next best skipped sketch before judging.
 
 ### Evolutionary foundation ✅
 - [x] Intent dossier — `src/analyzer/intent-dossier.ts` converts the intent and decomposition into goal, user value, non-goals, constraints, acceptance criteria, required checks, risk areas, known unknowns, success signals, and failure modes.

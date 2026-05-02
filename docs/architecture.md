@@ -52,15 +52,20 @@ flowchart TD
     I -- no --> C
     I -- yes --> J[Candidate leaf node]
     J --> Gate{--interactive-plan?}
-    Gate -- no --> K[Codex execution\nvia SDK or CLI]
-    Gate -- proceed --> K
+    Gate -- no --> S[Sketch + rank\nimplementation leaves]
+    Gate -- proceed --> S
     Gate -- kill --> P[Pruned branch\nexcluded from execution]
     Gate -- revise once --> R[human-revision child\nwith human prompt]
     R --> C
+    S --> K[Top-ranked Codex execution\nvia SDK or CLI]
     K --> V{Verification commands?}
     V -- local run --> VC[Run checks in leaf artifact dir]
     V -- dry-run/cloud/no checks --> L
-    VC --> L[LLM Judge scores\n6 dimensions]
+    VC --> VF{Required checks failed\nfor all selected leaves?}
+    VF -- yes --> K2[Execute next ranked\nskipped sketch]
+    K2 --> V
+    VF -- no --> L
+    L[LLM Judge scores\n6 dimensions]
     L --> FS[Compute fitness\nfrom judge + evidence]
     FS --> M([Ranked results])
     M --> N[Saved run UI\ncto ui]
@@ -194,17 +199,17 @@ A run with `--depth 4 --branching 2` on *"Build a REST API"*:
 root (depth 0) — requirements debate
 ├── REST approach (depth 1) — architecture debate
 │   ├── PostgreSQL backend (depth 2) — implementation debate
-│   │   └── leaf → Codex exec → verify → fitness 8.9/10
+│   │   └── leaf → sketch rank 8.4 → Codex exec → verify → fitness 8.9/10
 │   └── MongoDB backend (depth 2) — implementation debate
-│       └── leaf → Codex exec → verify → fitness 6.2/10
+│       └── leaf → sketch rank 6.1 → skipped before Codex
 └── GraphQL approach (depth 1) — architecture debate
     ├── Apollo Server (depth 2) — implementation debate
-    │   └── leaf → Codex exec → verify → fitness 7.8/10
+    │   └── leaf → sketch rank 7.7 → Codex exec → verify → fitness 7.8/10
     └── Pothos schema-first (depth 2) — implementation debate
-        └── leaf → Codex exec → verify → fitness 5.9/10
+        └── leaf → sketch rank 5.8 → skipped before Codex
 ```
 
-The judge composite remains available, but final implementation rankings use the deterministic fitness composite when it exists. Fitness weights verification evidence most heavily, then combines functional completeness, maintainability, simplicity, intent alignment, risk reduction, cost efficiency, and an uncertainty penalty. Required verification failures cap the composite so a branch with failing checks cannot win on judge prose alone.
+The judge composite remains available, but final implementation rankings use the deterministic fitness composite when it exists. Fitness weights verification evidence most heavily, then combines functional completeness, maintainability, simplicity, intent alignment, risk reduction, cost efficiency, and an uncertainty penalty. Required verification failures cap the composite so a branch with failing checks cannot win on judge prose alone. Sketch ranking happens before Codex execution, so skipped leaves remain inspectable without paying for full implementation.
 
 ## Agent Participation by Phase
 

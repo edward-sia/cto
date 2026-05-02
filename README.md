@@ -2,7 +2,7 @@
 
 ![Cambrian Tree Orchestrator hero image: a dark loading-screen past erupting into branching AI agent forms](docs/assets/cambrian-hero.png)
 
-Cambrian turns a single software intent into an explored solution tree. It decomposes the task into a stable intent dossier, selects the right agent panel, debates grounded alternatives, optionally pauses for human plan review, executes or synthesizes surviving leaf paths, verifies implementations when checks are configured, ranks results with evidence-aware fitness, and saves the whole run for inspection in a local browser UI.
+Cambrian turns a single software intent into an explored solution tree. It decomposes the task into a stable intent dossier, selects the right agent panel, debates grounded alternatives, optionally pauses for human plan review, sketches and ranks implementation leaves before expensive execution, verifies implementations when checks are configured, ranks results with evidence-aware fitness, and saves the whole run for inspection in a local browser UI.
 
 It is built for the moment when "ask one agent once" stops being enough: when you want competing implementation strategies, visible trade-offs, resumable execution, and a ranked set of candidate solutions instead of a single opaque answer.
 
@@ -13,6 +13,9 @@ It is built for the moment when "ask one agent once" stops being enough: when yo
 - **Round-table agent debate** — core delivery roles and optional specialists critique the intent from different angles.
 - **Organic branching** — the moderator forks only when agents surface meaningfully different, grounded implementation paths.
 - **Implementation or exploration mode** — code-producing tasks execute through Codex; research tasks produce synthesized leaf documents.
+- **Sketch-first execution** — implementation leaves are sketched and ranked cheaply; CTO executes the top candidates by default and keeps skipped leaf evidence for inspection.
+- **Compact debate memory** — later rounds receive concise structured debate state instead of the full prior transcript, while full transcripts remain saved.
+- **Deterministic cache** — stable analysis, dossier, compact-summary, verification, and judge results are cached under `.cambrian-tree/cache/`.
 - **Verified ground truth** — inject JSON facts, sample data, or OpenAPI specs so agents do not invent schemas, APIs, or constraints.
 - **Agent-requested research tools** — personas can request allowlisted read-only tools during debate; CTO resolves them through a broker and feeds compact evidence back into the moderator and later rounds.
 - **Human plan gate** — review candidate leaves in the terminal or browser, revise one branch, or kill weak directions early.
@@ -27,7 +30,7 @@ It is built for the moment when "ask one agent once" stops being enough: when yo
 3. When agents surface fundamentally different approaches, the tree **branches** — each alternative becomes an independent child node
 4. When agents converge, the tree deepens into the next phase
 5. If `--interactive-plan` is enabled, each candidate leaf pauses for a human decision: proceed, revise once, or kill
-6. In implementation mode, surviving leaf nodes are submitted to OpenAI Codex for implementation
+6. In implementation mode, surviving leaf nodes are sketched, ranked, and the top candidates are submitted to OpenAI Codex for implementation
 7. In exploration mode, surviving leaf nodes produce structured synthesis documents instead of code
 8. Implementation results are judged on six dimensions, combined with verification evidence into a fitness score, and ranked
 
@@ -80,7 +83,7 @@ Before the run starts, the CLI prints a cost estimate and asks for confirmation:
 Tree size:    ~7 nodes (worst case: 7), ~4 leaves (worst case: 4)
 LLM tokens:   ~145,200 total (124,800 debate, 20,400 judge)
 LLM cost:     ~$0.61
-Codex calls:  ~4 leaf executions (cost depends on Codex plan)
+Codex calls:  top-ranked leaf executions after sketch ranking (default: 2)
 
 Proceed? [y/N]
 ```
@@ -269,7 +272,7 @@ The UI reads saved state from `.cambrian-tree`, serves a local browser app, stre
 
 - saved runs and run metadata
 - the full branch tree as an interactive canvas, with zoom controls, fitness-aware score badges, phase/status styling, and a show-pruned toggle
-- node summaries, debate rounds, intent decomposition, accumulated context updates, leaf execution or synthesis output, changed files, tests, Codex usage, judge scores, and fitness scores
+- node summaries, run config/model routing, selected agents, ranked results, debate rounds, compact debate state, intent decomposition/dossiers, accumulated context updates, leaf sketches, verification output, changed files, tests, Codex usage, judge evidence, and fitness evidence
 - aggregate and per-leaf Codex usage totals when usage data is available
 - pending human plan reviews, with Proceed / Revise / Kill controls when the run is waiting for browser input
 
@@ -289,14 +292,21 @@ Interactive plan state is also resumable. Already-reviewed leaves are not prompt
 
 ## Cost Control
 
-Five knobs control how much a run will cost:
+CTO now reduces cost by default before you touch any knobs: debate rounds use compact prior context after round 1, deterministic analysis and evidence results are cached, and implementation leaves are sketched and ranked before Codex execution. The default implementation flow is:
+
+```text
+Explore broadly → sketch cheaply → rank sketches → execute top 2 → verify/judge → execute the next ranked sketch only if required verification fails for all selected leaves
+```
+
+Seven knobs still control how much a run will cost:
 
 1. **Tree size** — `--depth` × `--branching` is the worst-case node count (exponential). The pre-run estimator computes both worst case and an expected case (assumes ~50% of debates branch).
 2. **Pruning** — set `--prune-threshold 0.6` (or similar) to drop alternatives the moderator is unsure about. Below-threshold alternatives never get a debate or a Codex execution. If only one alternative survives, it folds into a consensus child (single path, not a branch). Use `--prune-schedule "0:0.45,2:0.7,4:0.85"` to prune gently early and strictly later.
-3. **Concurrency** — `--leaf-concurrency` controls how many Codex leaf executions run in parallel. Higher = faster wall-clock but more peak load. Doesn't affect total cost.
-4. **Run mode** — exploration mode synthesizes documents from leaf debates and skips Codex execution plus judge scoring.
-5. **Interactive planning** — `--interactive-plan` lets a human kill branches before execution or synthesis, or revise a candidate once so the agents debate the corrected direction before expensive work begins.
-6. **Provider choice** — `--provider openrouter` with `:free` models can make debate and judge calls free within provider limits. Unknown model pricing falls back to GPT-4o rates in estimates so the CLI errs on the conservative side.
+3. **Sketch-first execution** — CTO executes only the top 2 ranked implementation sketches by default. Other leaves remain in the saved tree with their sketch, score, and skipped reason.
+4. **Concurrency** — `--leaf-concurrency` controls how many Codex leaf executions run in parallel. Higher = faster wall-clock but more peak load. Doesn't affect total cost.
+5. **Run mode** — exploration mode synthesizes documents from leaf debates and skips Codex execution plus judge scoring.
+6. **Interactive planning** — `--interactive-plan` lets a human kill branches before execution or synthesis, or revise a candidate once so the agents debate the corrected direction before expensive work begins.
+7. **Provider choice** — `--provider openrouter` with `:free` models can make debate and judge calls free within provider limits. Unknown model pricing falls back to GPT-4o rates in estimates so the CLI errs on the conservative side.
 
 The final summary breaks Codex token usage down by input / cached input / output / reasoning so you can see where the budget went.
 
@@ -366,7 +376,9 @@ If a required verification command fails, the fitness composite is capped so a p
 
 Runs are saved to `.cambrian-tree/<run-id>/state.json` after every node. The tree is always resumable from the last completed node.
 
-Run state records the selected run mode, selected agents, leaf IDs, ranked results for implementation runs, LLM usage, aggregate Codex usage, and any pending browser review request. Node context records the original intent, intent decomposition, intent dossier, verified domain facts, PRD notes, acceptance criteria, architecture decisions, implementation specs, test strategy, branch decisions, human revision prompts, and ancestor summaries.
+Run state records the selected run mode, selected agents, leaf IDs, ranked results for implementation runs, LLM usage, aggregate Codex usage, cache stats, model tier assignments, and any pending browser review request. Node context records the original intent, intent decomposition, intent dossier, verified domain facts, PRD notes, acceptance criteria, architecture decisions, implementation specs, test strategy, branch decisions, human revision prompts, and ancestor summaries.
+
+Implementation leaves may also record an implementation sketch, sketch score, and skipped execution reason. Skipped leaves are not failures or pruned branches; they are candidates preserved after sketch ranking so the run can explain why Codex execution was narrowed.
 
 When interactive planning is enabled, `TreeNode.humanIntervention` records `proceed`, `revise`, or `kill`. Revision prompts are also stored on `NodeContext.humanRevisionPrompt` so subsequent debate, synthesis, and implementation prompts inherit the human steering instruction.
 
@@ -394,6 +406,7 @@ When interactive planning is enabled, `TreeNode.humanIntervention` records `proc
 | Browser plan review controls | ✅ Complete |
 | Codex usage reporting in CLI and UI | ✅ Complete |
 | Evolutionary foundation — intent dossier, verification, fitness ranking, progressive pruning | ✅ Complete |
+| Cost-control foundation — model cascade, compact context, deterministic cache, sketch-first execution | ✅ Complete |
 | Documentation impact guard | ✅ Complete |
 
 **Phase 2 delivered:** Zod validation on all LLM responses, exponential-backoff retry (3 attempts, 1s/2s/4s), token budget tracking with warnings, graceful Ctrl+C shutdown with state save.
@@ -405,6 +418,8 @@ When interactive planning is enabled, `TreeNode.humanIntervention` records `proc
 **Latest orchestration updates:** CTO now decomposes intent before debate, classifies runs as implementation or exploration, selects specialists dynamically, supports verified `--ground-truth` providers (`file:`, `sample:`, `openapi:`), and synthesizes exploration leaves without Codex execution.
 
 **Evolutionary foundation delivered:** CTO now builds an intent dossier before debate, supports repeatable post-leaf verification commands, stores verification summaries in run state, ranks implementations by evidence-aware fitness, displays fitness-aware scores in CLI and UI, and supports depth-aware pruning schedules via `--prune-schedule`.
+
+**Cost-control foundation delivered:** CTO now has internal model-tier routing without adding CLI flags, compact debate state for later rounds, deterministic cache entries for stable analysis and evidence work, and sketch-first execution that preserves broad exploration while executing only the top-ranked implementation leaves by default.
 
 **Documentation impact guard delivered:** `npm test` now runs `npm run docs:check` before Vitest. Code-impacting diffs must update `README.md`, `AGENTS.md`, `CLAUDE.md`, or `docs/**`, with `DOCS_IMPACT=none` available only for explicitly no-docs-impact changes.
 

@@ -100,6 +100,7 @@ Provider metadata lives in `src/providers/llm-provider.ts`; persisted runs store
 
 - **Branching is organic:** Agents surface alternatives via their debate contributions. The moderator (separate LLM call) detects divergence and forks. No hard-coded branching rules.
 - **Context accumulates:** Each child inherits parent context + debate summary. Leaf nodes get the full ancestor path, intent decomposition, dossier, ground truth, and locked branch decisions as implementation or synthesis context.
+- Agent-requested research tools are available when enabled with --tools; personas may request read-only evidence during debate, but execution is mediated by the ToolBroker and persisted as tool evidence.
 - **Human plan gate is opt-in:** `--interactive-plan` pauses before execution. Human revisions create a `human-revision` child that gets another CTO debate; killed branches are marked `pruned`.
 - **Pruning is configurable:** Moderator confidence/relevance controls branch survival, and `--prune-schedule` can use lower thresholds early and stricter thresholds deeper in the tree.
 - **Fitness beats rhetoric:** Judge scores remain visible, but configured verification results and deterministic fitness determine final implementation ranking.

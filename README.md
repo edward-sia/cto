@@ -14,6 +14,7 @@ It is built for the moment when "ask one agent once" stops being enough: when yo
 - **Organic branching** — the moderator forks only when agents surface meaningfully different, grounded implementation paths.
 - **Implementation or exploration mode** — code-producing tasks execute through Codex; research tasks produce synthesized leaf documents.
 - **Verified ground truth** — inject JSON facts, sample data, or OpenAPI specs so agents do not invent schemas, APIs, or constraints.
+- **Agent-requested research tools** — personas can request allowlisted read-only tools during debate; CTO resolves them through a broker and feeds compact evidence back into the moderator and later rounds.
 - **Human plan gate** — review candidate leaves in the terminal or browser, revise one branch, or kill weak directions early.
 - **Evidence-aware fitness** — optional verification commands and LLM judge evidence are combined into a deterministic fitness score used for final ranking.
 - **Parallel execution with usage accounting** — run leaves concurrently and track LLM plus Codex input, cached input, output, and reasoning tokens.
@@ -92,6 +93,9 @@ cto run "Build X" -y
 
 # debate-tree shape only, no API key required
 cto run "Build X" --dry-run
+
+npx tsx src/cli/index.ts run "Design an integration against current vendor docs" --tools docs-fetch,web-search
+npx tsx src/cli/index.ts run "Use local repo patterns before proposing changes" --tools repo-search,repo-read,package-info
 ```
 
 ### LLM Providers
@@ -189,6 +193,17 @@ cto run "Build from these domain constraints" --ground-truth file:./facts.json
 ```
 
 `file:` expects JSON matching the `DomainFacts` shape: `domain`, optional `schemas`, optional `apiEndpoints`, `constraints`, `knownAbsences`, and optional `rawContext`. `sample:` reads CSV or JSON data and extracts a schema summary. `openapi:` reads JSON or YAML OpenAPI specs and extracts routes plus component schemas.
+
+### Agent-Requested Research Tools
+
+Use `--tools` when agents need fresh public evidence or local repo evidence during debate:
+
+```bash
+cto run "Choose the current Stripe Checkout integration shape" --tools docs-fetch,web-search
+cto run "Follow local CLI option patterns" --tools repo-search,repo-read,package-info
+```
+
+Tools are read-only and orchestrator-mediated. Agents emit `TOOL_REQUEST [tool-name]: query`; CTO validates the request, applies budgets, resolves allowlisted tools, and stores `ToolRequest` and `ToolEvidence` records in saved state. Tool evidence is compacted into later agent prompts and the moderator prompt, while skipped or failed requests remain visible for audit.
 
 Use `--interactive-plan` when you want a human checkpoint before leaf execution or exploration synthesis. CTO will pause on each candidate leaf and let you proceed, revise once with a new prompt that creates a debated child branch, or kill the branch before expensive work starts.
 

@@ -41,7 +41,8 @@ flowchart TD
     A1 --> B[Create root node\ndepth 0]
     B --> C{Debate round}
     C --> D[Each agent speaks\nin round-robin order]
-    D --> E[Moderator assesses\nround transcript]
+    D --> T[Collect TOOL_REQUEST lines\nand resolve via ToolBroker]
+    T --> E[Moderator assesses\nround transcript + tool evidence]
     E --> F{Outcome?}
     F -- consensus --> G[Single child node\ndepth + 1]
     F -- continue --> C
@@ -119,6 +120,7 @@ sequenceDiagram
     participant A1 as Agent (PM)
     participant A2 as Agent (BA)
     participant AN as Agent (QA)
+    participant TB as ToolBroker
     participant M as Moderator LLM
 
     O->>DE: runDebate(phase, context, agents)
@@ -129,7 +131,9 @@ sequenceDiagram
         A2-->>DE: response (sees A1's contribution explicitly)
         DE->>AN: prompt(priorRoundsHistory=[], currentRoundSoFar=[A1,A2])
         AN-->>DE: response (sees A1+A2 explicitly)
-        DE->>M: assessRound(fullTranscript, alternatives)
+        DE->>TB: resolve TOOL_REQUEST lines once per round
+        TB-->>DE: compact ToolEvidence records
+        DE->>M: assessRound(fullTranscript, alternatives, toolEvidence)
         M-->>DE: {outcome, alternatives[], summary}
         alt outcome == consensus
             DE-->>O: {finalOutcome="consensus", contextUpdates}
@@ -159,6 +163,12 @@ Supported agent-emitted fields: `prd`, `acceptance-criteria`, `architecture-deci
 Array fields (`acceptance-criteria`, `architecture-decision`) are deduplicated and appended; scalar fields take the last written value.
 
 Human plan revisions use a separate context field, `humanRevisionPrompt`. It is written by the interactive gate, not by agents, and is rendered into later agent, synthesis, and implementation prompts under a `Human Revision` heading.
+
+## Agent-Requested Research Tools
+
+Personas may request read-only tools using `TOOL_REQUEST [tool-name]: query` in their debate response. The DebateEngine collects requests after every agent has spoken, then calls the ToolBroker once before moderator assessment. The broker validates allowlists and budgets, executes read-only adapters, deduplicates equivalent requests, and persists both requests and evidence.
+
+Tool evidence is rendered as compact decision-grade context: findings, decision relevance, discovered constraints, risks, open questions, sources, limitations, and confidence. The full structured evidence remains in saved run state and the saved-run UI.
 
 ## Interactive Plan Gate
 

@@ -4,6 +4,7 @@
  */
 
 import { TOOL_NAMES } from "../types/index.js";
+import { renderToolEvidenceForPrompt } from "../tools/render.js";
 import type {
   AgentRole,
   AgentInput,
@@ -33,6 +34,20 @@ Do not invent facts, benchmarks, studies, prices, usage volumes, latency targets
 If a detail is not provided, label it as UNKNOWN or ASSUMPTION, ask a challenge question, or recommend a verification spike.
 Do not put assumptions into CONTEXT_UPDATE lines. Quantify only when the context provides numbers; otherwise describe the trade-off qualitatively and name what evidence is missing.`;
 
+const SHARED_TOOL_REQUESTS = `## Tool Requests
+You may request read-only tools when missing evidence materially affects this decision.
+
+Use this exact format:
+TOOL_REQUEST [tool-name]: specific query or target
+
+Rules:
+- Request tools only for evidence needed to advance this node.
+- Prefer official docs, source files, standards, or authoritative references.
+- Do not request tools for generic curiosity.
+- Do not claim a fact from a tool unless it appears in Tool Evidence.
+- If Tool Evidence conflicts with prior assumptions, update your position.
+- If evidence is missing or limited, label the claim UNKNOWN.`;
+
 const formatBoundaryList = (items: string[]) => items.map((item) => `- ${item}`).join("\n");
 
 function withBoundaries(
@@ -47,7 +62,9 @@ ${formatBoundaryList(boundary.does)}
 ## Does Not
 ${formatBoundaryList(boundary.doesNot)}
 
-${SHARED_EVIDENCE_BOUNDARY}`;
+${SHARED_EVIDENCE_BOUNDARY}
+
+${SHARED_TOOL_REQUESTS}`;
 }
 
 const RAW_AGENT_DEFINITIONS: Record<AgentRole, RawAgentDefinition> = {
@@ -968,6 +985,10 @@ ${decomp.feasibilityFlags.map((f) => `- ${f}`).join("\n") || "- (none)"}`
   const domainFactsSection = input.context.domainFacts
     ? renderDomainFacts(input.context.domainFacts)
     : "";
+  const toolEvidenceSection = renderToolEvidenceForPrompt(
+    input.context.toolEvidence,
+    input.context.toolEvidence?.length ?? 0
+  );
 
   const contextSummary = [
     `## Original Intent\n${input.context.originalIntent}`,
@@ -975,6 +996,7 @@ ${decomp.feasibilityFlags.map((f) => `- ${f}`).join("\n") || "- (none)"}`
       ? `## Human Revision\nThe human reviewer added this steering instruction before implementation:\n${input.context.humanRevisionPrompt}`
       : "",
     domainFactsSection,
+    toolEvidenceSection,
     decompositionSection,
     input.context.prd ? `## PRD\n${input.context.prd}` : "",
     input.context.acceptanceCriteria?.length

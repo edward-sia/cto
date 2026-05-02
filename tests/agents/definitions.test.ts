@@ -84,6 +84,46 @@ describe("buildAgentPrompt", () => {
     expect(user).toContain("Prefer local-first storage.");
   });
 
+  it("renders tool request instructions and compact tool evidence", () => {
+    const { system, user } = buildAgentPrompt(AGENT_DEFINITIONS["developer"], {
+      priorRoundsHistory: [],
+      currentRoundSoFar: [],
+      phase: "implementation",
+      roundNumber: 1,
+      context: {
+        originalIntent: "Add tool support",
+        ancestorSummaries: [],
+        toolEvidence: [
+          {
+            id: "evidence-1",
+            requestId: "request-1",
+            toolName: "repo-search",
+            query: "buildAgentPrompt",
+            requestedBy: "developer",
+            additionalRequesters: [],
+            nodeId: "node-1",
+            roundNumber: 1,
+            summary: "buildAgentPrompt renders context sections.",
+            findings: ["Context sections are joined before the turn instruction."],
+            decisionRelevance: ["Render tool evidence as another context section."],
+            constraintsDiscovered: ["Keep prompts compact."],
+            risksDiscovered: ["Do not treat requests as evidence."],
+            openQuestions: [],
+            sources: [{ path: "src/agents/definitions.ts", retrievedAt: "2026-05-02T00:00:00.000Z" }],
+            limitations: ["Fixture evidence."],
+            confidence: 0.8,
+            createdAt: "2026-05-02T00:00:01.000Z",
+          },
+        ],
+      },
+    });
+
+    expect(system).toContain("## Tool Requests");
+    expect(system).toContain("TOOL_REQUEST [tool-name]: specific query or target");
+    expect(user).toContain("## Tool Evidence");
+    expect(user).toContain("buildAgentPrompt renders context sections.");
+  });
+
   it("uses compact debate state instead of full prior transcript when provided", () => {
     const { user } = buildAgentPrompt(AGENT_DEFINITIONS["developer"], {
       priorRoundsHistory: [],

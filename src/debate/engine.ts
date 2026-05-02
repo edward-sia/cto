@@ -17,6 +17,7 @@ import type {
   ModeratorAssessment,
   NodeContext,
   TreePhase,
+  CompactDebateState,
 } from "../types/index.js";
 import {
   AGENT_DEFINITIONS,
@@ -24,6 +25,7 @@ import {
   parseAgentResponse,
 } from "../agents/definitions.js";
 import { ModeratorAssessmentSchema } from "../schemas/index.js";
+import { rollupToolEvidence } from "../tools/render.js";
 import { withRetry } from "../utils/retry.js";
 import { addUsageFromResponse, emptyUsage } from "../utils/usage.js";
 import type { LLMUsage } from "../types/index.js";
@@ -119,11 +121,126 @@ alternative addresses the **load-bearing claims** and **in-scope** items from th
 
 Be calibrated: most alternatives that are actually worth branching will score high on BOTH dimensions.`;
 
+function initialCompactState(context: NodeContext): CompactDebateState {
+  const evidenceRollup = rollupToolEvidence(context.toolEvidence);
+
+  return {
+    acceptedFacts: [
+      ...(context.intentDecomposition?.loadBearingClaims ?? []),
+      ...(context.intentDossier?.constraints ?? []),
+    ].slice(0, 8),
+    lockedDecisions: context.architectureDecisions ?? [],
+    liveAlternatives: [],
+    killedAlternatives: [],
+    unresolvedQuestions: [
+      ...(context.intentDecomposition?.undefinedTerms.map((term) => `${term.term}: ${term.needsResolution}`) ?? []),
+      ...(context.intentDossier?.knownUnknowns ?? []),
+    ].slice(0, 8),
+    risks: context.intentDossier?.riskAreas.slice(0, 8) ?? [],
+    verificationIdeas: context.intentDossier?.requiredChecks.slice(0, 8) ?? [],
+    evidenceFindings: evidenceRollup.evidenceFindings,
+    evidenceConstraints: evidenceRollup.evidenceConstraints,
+    evidenceRisks: evidenceRollup.evidenceRisks,
+    evidenceOpenQuestions: evidenceRollup.evidenceOpenQuestions,
+    lastRoundSummary: "",
+  };
+}
+
+function compactMessages(messages: DebateMessage[]): string {
+  return messages
+    .map((m) => `[${m.role.toUpperCase()}]: ${m.content.slice(0, 1200)}`)
+    .join("\n\n");
+}
+
+function updateCompactState(
+  previous: CompactDebateState,
+  assessment: ModeratorAssessment,
+  roundMessages: DebateMessage[],
+): CompactDebateState {
+  const mentionedRisks = roundMessages
+    .flatMap((message) =>
+      message.content
+        .split(/\n+/)
+        .filter((line) => /\brisk|gotcha|concern|failure|unknown/i.test(line))
+        .map((line) => line.replace(/^[-*\d.\s]+/, "").trim())
+    )
+    .filter(Boolean)
+    .slice(0, 6);
+
+  const verificationIdeas = roundMessages
+    .flatMap((message) =>
+      message.content
+        .split(/\n+/)
+        .filter((line) => /\btest|verify|check|validation|coverage/i.test(line))
+        .map((line) => line.replace(/^[-*\d.\s]+/, "").trim())
+    )
+    .filter(Boolean)
+    .slice(0, 6);
+
+  const liveAlternatives = assessment.outcome === "diverging" || assessment.outcome === "continue"
+    ? assessment.alternatives.map((alt) => ({
+        id: alt.id,
+        label: alt.label,
+        summary: alt.description,
+        supportingAgents: alt.supportedBy,
+        risks: mentionedRisks.slice(0, 3),
+        verificationIdeas: verificationIdeas.slice(0, 3),
+        confidence: alt.confidence,
+        relevanceToIntent: alt.relevanceToIntent,
+      }))
+    : [];
+
+  const killedAlternatives = assessment.outcome === "consensus"
+    ? [
+        ...previous.killedAlternatives,
+        ...previous.liveAlternatives.map((alt) => ({
+          label: alt.label,
+          reason: "Debate converged without keeping this as a separate branch.",
+        })),
+      ].slice(-8)
+    : previous.killedAlternatives;
+
+  return {
+    acceptedFacts: previous.acceptedFacts.slice(0, 8),
+    lockedDecisions: previous.lockedDecisions.slice(0, 8),
+    liveAlternatives,
+    killedAlternatives,
+    unresolvedQuestions: previous.unresolvedQuestions.slice(0, 8),
+    risks: [...new Set([...previous.risks, ...mentionedRisks])].slice(0, 8),
+    verificationIdeas: [...new Set([...previous.verificationIdeas, ...verificationIdeas])].slice(0, 8),
+    evidenceFindings: previous.evidenceFindings.slice(0, 8),
+    evidenceConstraints: previous.evidenceConstraints.slice(0, 8),
+    evidenceRisks: previous.evidenceRisks.slice(0, 8),
+    evidenceOpenQuestions: previous.evidenceOpenQuestions.slice(0, 8),
+    lastRoundSummary: assessment.summary,
+  };
+}
+
+function renderCompactForModerator(state: CompactDebateState): string {
+  return [
+    state.lastRoundSummary ? `Last round: ${state.lastRoundSummary}` : "",
+    state.acceptedFacts.length ? `Accepted facts:\n${state.acceptedFacts.map((f) => `- ${f}`).join("\n")}` : "",
+    state.lockedDecisions.length ? `Locked decisions:\n${state.lockedDecisions.map((d) => `- ${d}`).join("\n")}` : "",
+    state.liveAlternatives.length
+      ? `Live alternatives from prior rounds:\n${state.liveAlternatives.map((a) => `- ${a.label}: ${a.summary}`).join("\n")}`
+      : "Live alternatives from prior rounds: none",
+    state.killedAlternatives.length
+      ? `Rejected alternatives:\n${state.killedAlternatives.map((a) => `- ${a.label}: ${a.reason}`).join("\n")}`
+      : "",
+    state.unresolvedQuestions.length ? `Unresolved questions:\n${state.unresolvedQuestions.map((q) => `- ${q}`).join("\n")}` : "",
+    state.evidenceFindings.length ? `Evidence findings:\n${state.evidenceFindings.map((q) => `- ${q}`).join("\n")}` : "",
+    state.evidenceConstraints.length ? `Evidence constraints:\n${state.evidenceConstraints.map((q) => `- ${q}`).join("\n")}` : "",
+    state.evidenceRisks.length ? `Evidence risks:\n${state.evidenceRisks.map((q) => `- ${q}`).join("\n")}` : "",
+    state.evidenceOpenQuestions.length ? `Evidence open questions:\n${state.evidenceOpenQuestions.map((q) => `- ${q}`).join("\n")}` : "",
+  ].filter(Boolean).join("\n\n");
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface DebateEngineConfig {
   openai: OpenAI;
   reasoningModel: string;
+  moderatorModel?: string;
   maxDebateRounds: number;
   maxBranching: number;
   dryRun?: boolean;
@@ -142,6 +259,7 @@ export type DebateProgressEvent =
 export class DebateEngine {
   private openai: OpenAI;
   private model: string;
+  private moderatorModel: string;
   private maxRounds: number;
   private maxBranching: number;
   private dryRun: boolean;
@@ -152,6 +270,7 @@ export class DebateEngine {
   constructor(config: DebateEngineConfig) {
     this.openai = config.openai;
     this.model = config.reasoningModel;
+    this.moderatorModel = config.moderatorModel ?? config.reasoningModel;
     this.maxRounds = config.maxDebateRounds;
     this.maxBranching = config.maxBranching;
     this.dryRun = config.dryRun ?? false;
@@ -166,6 +285,7 @@ export class DebateEngine {
     const rounds: DebateRound[] = [];
     let allMessages: DebateMessage[] = [];
     const accumulatedContextUpdates: Partial<NodeContext> = {};
+    let compactState = initialCompactState(context);
 
     for (let roundNum = 1; roundNum <= this.maxRounds; roundNum++) {
       this.onProgress?.({ type: "round_start", round: roundNum, totalRounds: this.maxRounds });
@@ -178,8 +298,9 @@ export class DebateEngine {
 
         const agentDef = AGENT_DEFINITIONS[agentRole];
         const input: AgentInput = {
-          priorRoundsHistory: allMessages,
+          priorRoundsHistory: roundNum === 1 ? allMessages : [],
           currentRoundSoFar: [...roundMessages],
+          compactDebateState: roundNum > 1 ? compactState : undefined,
           context,
           phase,
           roundNumber: roundNum,
@@ -229,10 +350,12 @@ export class DebateEngine {
 
       const assessment = await this.assessRound(
         roundNum,
-        [...allMessages, ...roundMessages],
+        roundMessages,
         roundAlternatives,
-        context
+        context,
+        compactState
       );
+      compactState = updateCompactState(compactState, assessment, roundMessages);
 
       this.onProgress?.({ type: "moderator_assessment", round: roundNum, outcome: assessment });
 
@@ -247,12 +370,12 @@ export class DebateEngine {
 
       if (assessment.outcome === "consensus") {
         this.onProgress?.({ type: "debate_complete", outcome: "consensus" });
-        return { rounds, finalOutcome: "consensus", summary: assessment.summary, tokenUsage: this.totalTokens, llmUsage: this.llmUsage, contextUpdates: accumulatedContextUpdates };
+        return { rounds, finalOutcome: "consensus", summary: assessment.summary, tokenUsage: this.totalTokens, llmUsage: this.llmUsage, contextUpdates: accumulatedContextUpdates, compactState };
       }
 
       if (assessment.outcome === "diverging") {
         this.onProgress?.({ type: "debate_complete", outcome: "branched" });
-        return { rounds, finalOutcome: "branched", summary: assessment.summary, tokenUsage: this.totalTokens, llmUsage: this.llmUsage, contextUpdates: accumulatedContextUpdates };
+        return { rounds, finalOutcome: "branched", summary: assessment.summary, tokenUsage: this.totalTokens, llmUsage: this.llmUsage, contextUpdates: accumulatedContextUpdates, compactState };
       }
     }
 
@@ -264,18 +387,18 @@ export class DebateEngine {
       tokenUsage: this.totalTokens,
       llmUsage: this.llmUsage,
       contextUpdates: accumulatedContextUpdates,
+      compactState,
     };
   }
 
   private async assessRound(
     roundNumber: number,
-    allMessages: DebateMessage[],
+    roundMessages: DebateMessage[],
     alternatives: Alternative[],
-    context: NodeContext
+    context: NodeContext,
+    compactState: CompactDebateState
   ): Promise<ModeratorAssessment> {
-    const transcript = allMessages
-      .map((m) => `[${m.role.toUpperCase()}]: ${m.content}`)
-      .join("\n\n");
+    const transcript = compactMessages(roundMessages);
 
     const alternativesSummary =
       alternatives.length > 0
@@ -303,7 +426,10 @@ export class DebateEngine {
 Original intent: ${context.originalIntent}
 ${context.branchDecision ? `Branch decision: ${context.branchDecision}` : ""}
 ${decompositionFrame}${lockedSection}
-## Full Transcript
+## Compact Prior Debate State
+${renderCompactForModerator(compactState)}
+
+## Current Round Transcript
 ${transcript}
 ${alternativesSummary}
 
@@ -320,7 +446,7 @@ ${isLastRound ? "\n⚠️ THIS IS THE FINAL ROUND. You MUST choose consensus or 
 
     const rawResponse = this.dryRun
       ? this.mockModeratorResponse(roundNumber, alternatives)
-      : await this.callLLM(MODERATOR_SYSTEM_PROMPT, userPrompt);
+      : await this.callLLM(MODERATOR_SYSTEM_PROMPT, userPrompt, this.moderatorModel);
 
     try {
       const jsonStr = rawResponse.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
@@ -341,10 +467,10 @@ ${isLastRound ? "\n⚠️ THIS IS THE FINAL ROUND. You MUST choose consensus or 
     }
   }
 
-  private async callLLM(system: string, user: string): Promise<string> {
+  private async callLLM(system: string, user: string, model = this.model): Promise<string> {
     const response = await withRetry(() =>
       this.openai.chat.completions.create({
-        model: this.model,
+        model,
         messages: [
           { role: "system", content: system },
           { role: "user", content: user },

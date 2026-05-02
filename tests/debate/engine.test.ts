@@ -68,9 +68,40 @@ describe("ModeratorAssessmentSchema", () => {
 });
 
 describe("DebateEngine tool integration", () => {
-  it("resolves tool requests before moderator assessment and persists evidence in the transcript", async () => {
+  it("resolves tool requests before moderator assessment and renders evidence in the moderator prompt", async () => {
     const calls: IncomingToolRequest[][] = [];
     const events: string[] = [];
+    let createCalls = 0;
+    let moderatorPrompt = "";
+    const response = (content: string) => ({
+      choices: [{ message: { content } }],
+      usage: {
+        total_tokens: 1,
+        prompt_tokens: 1,
+        completion_tokens: 1,
+        prompt_tokens_details: { cached_tokens: 0 },
+      },
+    });
+    const fakeOpenAI = {
+      chat: {
+        completions: {
+          async create(input: { messages: Array<{ role: string; content: unknown }> }) {
+            createCalls += 1;
+            if (createCalls === 1) {
+              return response(`[developer] Need docs.
+TOOL_REQUEST [docs-fetch]: official docs for implementation`);
+            }
+
+            moderatorPrompt = String(input.messages.find((message) => message.role === "user")?.content ?? "");
+            return response(JSON.stringify({
+              outcome: "consensus",
+              alternatives: [],
+              summary: "Tool evidence supports consensus.",
+            }));
+          },
+        },
+      },
+    } as unknown as OpenAI;
     const fakeBroker: Pick<ToolBroker, "resolveRoundRequests"> = {
       async resolveRoundRequests(input) {
         events.push("broker");
@@ -114,11 +145,11 @@ describe("DebateEngine tool integration", () => {
     };
 
     const engine = new DebateEngine({
-      openai: {} as OpenAI,
+      openai: fakeOpenAI,
       reasoningModel: "test-model",
       maxDebateRounds: 1,
       maxBranching: 2,
-      dryRun: true,
+      dryRun: false,
       nodeId: "node-tools",
       toolBroker: fakeBroker,
       onProgress(event) {
@@ -146,6 +177,9 @@ describe("DebateEngine tool integration", () => {
     expect(transcript.toolRequests?.[0].status).toBe("completed");
     expect(transcript.contextUpdates.toolEvidence?.[0].summary).toContain("Official docs");
     expect(transcript.compactState?.evidenceFindings).toContain("The API is documented.");
+    expect(moderatorPrompt).toContain("## Current Tool Evidence");
+    expect(moderatorPrompt).toContain("Official docs support the requested API.");
+    expect(moderatorPrompt).toContain("The API is documented.");
     expect(events).toEqual(expect.arrayContaining(["broker", "tools", "moderator"]));
     expect(events.indexOf("broker")).toBeLessThan(events.indexOf("moderator"));
     expect(events.indexOf("tools")).toBeLessThan(events.indexOf("moderator"));

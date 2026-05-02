@@ -977,6 +977,17 @@ function css(): string {
       font-weight: 900;
     }
 
+    .metric-grid-wide {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .compact-card {
+      border: 1px solid rgba(119, 149, 190, 0.14);
+      border-radius: var(--radius-sm);
+      padding: 10px;
+      background: rgba(5, 10, 18, 0.46);
+    }
+
     .empty {
       padding: 24px;
       color: var(--muted);
@@ -1012,6 +1023,98 @@ function css(): string {
       overflow-wrap: break-word;
       color: #cbd8e8;
       line-height: 1.55;
+    }
+
+    .timeline-note {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 950;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 12px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .timeline-item {
+      position: relative;
+      min-width: 0;
+      padding-left: 40px;
+    }
+
+    .timeline-item::before {
+      content: "";
+      position: absolute;
+      left: 13px;
+      top: 30px;
+      bottom: -13px;
+      width: 1px;
+      background: rgba(119, 149, 190, 0.24);
+    }
+
+    .timeline-item:last-child::before {
+      display: none;
+    }
+
+    .timeline-index {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 27px;
+      height: 27px;
+      border: 1px solid rgba(var(--signal-rgb), 0.34);
+      border-radius: 999px;
+      background: rgba(var(--signal-rgb), 0.1);
+      color: var(--signal);
+      display: grid;
+      place-items: center;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 950;
+      box-shadow: 0 0 14px rgba(var(--signal-rgb), 0.1);
+    }
+
+    .timeline-card {
+      min-width: 0;
+      border: 1px solid rgba(119, 149, 190, 0.14);
+      border-radius: var(--radius-sm);
+      padding: 10px 11px;
+      background: rgba(5, 10, 18, 0.44);
+    }
+
+    .timeline-label {
+      margin: 0 0 8px;
+      color: #9fb0c8;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 950;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .timeline-time {
+      margin: -3px 0 8px;
+      color: var(--signal);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 850;
+    }
+
+    .timeline-text p {
+      margin: 0 0 8px;
+      color: #cbd8e8;
+      line-height: 1.62;
+    }
+
+    .timeline-text p:last-child {
+      margin-bottom: 0;
     }
 
     .score-row {
@@ -1564,6 +1667,8 @@ function clientScript(): string {
       meta.className = "run-meta";
       appendChip(meta, run.status || "unknown");
       appendChip(meta, String(run.leafCount || 0) + " leaves");
+      appendChip(meta, String(run.toolRequestCount || 0) + " tool requests");
+      appendChip(meta, String(run.toolEvidenceCount || 0) + " evidence");
       if (run.codexUsageTotal) {
         appendChip(meta, "Codex " + formatCodexTokens(run.codexUsageTotal));
       }
@@ -1832,7 +1937,8 @@ function clientScript(): string {
   }
 
   function renderSummaryTab(node) {
-    var path = findPath(state.run.root, node.id).map(function (item) {
+    var pathNodes = findPath(state.run.root, node.id);
+    var path = pathNodes.map(function (item) {
       return item.branchLabel || "root";
     });
 
@@ -1842,10 +1948,16 @@ function clientScript(): string {
     appendKeyValue(overview, "Path", path.join(" / "));
     appendKeyValue(overview, "Created", formatDateTime(node.createdAt));
     appendKeyValue(overview, "Updated", formatDateTime(node.updatedAt));
+    appendKeyValue(overview, "Tool requests", formatNumber((node.toolRequests || []).length));
+    appendKeyValue(
+      overview,
+      "Tool evidence",
+      formatNumber((node.context && node.context.toolEvidence ? node.context.toolEvidence : []).length),
+    );
     refs.tabContent.appendChild(overview);
 
     var ancestorSection = section("Ancestor Summaries");
-    appendListOrEmpty(ancestorSection, node.context && node.context.ancestorSummaries, "No ancestor summaries recorded.");
+    appendTimelineOrEmpty(ancestorSection, buildAncestorTimeline(node, pathNodes), "No ancestor summaries recorded.");
     refs.tabContent.appendChild(ancestorSection);
 
     if (isPendingReviewNode(node)) {
@@ -1862,6 +1974,8 @@ function clientScript(): string {
       refs.tabContent.appendChild(intervention);
     }
 
+    renderRunOverview();
+    renderRankedResults();
     renderRunCodexUsage();
   }
 
@@ -1971,7 +2085,27 @@ function clientScript(): string {
     appendKeyValue(outcome, "Final", transcript.finalOutcome || "Not recorded");
     appendField(outcome, "Summary", transcript.summary || "No summary recorded.", "summary-block");
     appendKeyValue(outcome, "Tokens", formatNumber(transcript.tokenUsage || 0));
+    if (transcript.llmUsage) {
+      var usageMetrics = document.createElement("div");
+      usageMetrics.className = "mini-metrics";
+      appendMiniMetric(usageMetrics, "LLM input", formatNumber(transcript.llmUsage.inputTokens || 0));
+      appendMiniMetric(usageMetrics, "LLM cached", formatNumber(transcript.llmUsage.cachedInputTokens || 0));
+      appendMiniMetric(usageMetrics, "LLM output", formatNumber(transcript.llmUsage.outputTokens || 0));
+      outcome.appendChild(usageMetrics);
+    }
     refs.tabContent.appendChild(outcome);
+
+    if (hasMeaningfulValue(transcript.contextUpdates)) {
+      var updates = collapsibleSection("Context Updates", false);
+      appendStructuredObject(updates.body, transcript.contextUpdates, "No context updates recorded.");
+      refs.tabContent.appendChild(updates.details);
+    }
+
+    if (hasMeaningfulValue(transcript.compactState)) {
+      var compact = collapsibleSection("Compact Debate State", false);
+      renderCompactDebateState(compact.body, transcript.compactState);
+      refs.tabContent.appendChild(compact.details);
+    }
 
     transcript.rounds.forEach(function (round) {
       var roundSection = collapsibleSection("Round " + String(round.roundNumber || ""), true);
@@ -2025,6 +2159,39 @@ function clientScript(): string {
 
   function renderContextTab(node) {
     var context = node.context || {};
+    var pathNodes = state.run && state.run.root ? findPath(state.run.root, node.id) : [];
+
+    var originalIntent = section("Original Intent");
+    appendTextOrEmpty(originalIntent, context.originalIntent, "No original intent recorded.");
+    refs.tabContent.appendChild(originalIntent);
+
+    var decomposition = collapsibleSection("Intent Decomposition", true);
+    renderIntentDecomposition(decomposition.body, context.intentDecomposition);
+    refs.tabContent.appendChild(decomposition.details);
+
+    var dossier = collapsibleSection("Intent Dossier", true);
+    renderIntentDossier(dossier.body, context.intentDossier);
+    refs.tabContent.appendChild(dossier.details);
+
+    if (hasMeaningfulValue(context.domainFacts)) {
+      var domainFacts = collapsibleSection("Domain Facts", false);
+      appendStructuredObject(domainFacts.body, context.domainFacts, "No domain facts recorded.");
+      refs.tabContent.appendChild(domainFacts.details);
+    }
+
+    if (context.humanRevisionPrompt) {
+      var humanRevision = section("Human Revision Prompt");
+      appendTextOrEmpty(humanRevision, context.humanRevisionPrompt, "No human revision prompt recorded.");
+      refs.tabContent.appendChild(humanRevision);
+    }
+
+    var toolRequests = section("Tool Requests");
+    renderToolRequests(toolRequests, node.toolRequests);
+    refs.tabContent.appendChild(toolRequests);
+
+    var toolEvidence = section("Tool Evidence");
+    renderToolEvidence(toolEvidence, context.toolEvidence);
+    refs.tabContent.appendChild(toolEvidence);
 
     var prd = section("PRD");
     appendTextOrEmpty(prd, context.prd, "No PRD recorded.");
@@ -2051,7 +2218,7 @@ function clientScript(): string {
     refs.tabContent.appendChild(tests);
 
     var ancestors = section("Ancestor Summaries");
-    appendListOrEmpty(ancestors, context.ancestorSummaries, "No ancestor summaries recorded.");
+    appendTimelineOrEmpty(ancestors, buildAncestorTimeline(node, pathNodes), "No ancestor summaries recorded.");
     refs.tabContent.appendChild(ancestors);
   }
 
@@ -2061,9 +2228,39 @@ function clientScript(): string {
       return;
     }
 
-    if (!node.executionResult && !node.score) {
-      refs.tabContent.appendChild(emptyBlock("This leaf does not have execution or judge output yet."));
+    if (!node.executionResult && !node.score && !node.implementationSketch && !node.skippedExecutionReason) {
+      refs.tabContent.appendChild(emptyBlock("This leaf does not have execution, sketch, or judge output yet."));
       return;
+    }
+
+    if (node.implementationSketch || node.sketchScore || node.skippedExecutionReason) {
+      var sketch = section("Implementation Sketch");
+      if (node.skippedExecutionReason) appendKeyValue(sketch, "Execution", node.skippedExecutionReason);
+      if (node.sketchScore) appendKeyValue(sketch, "Sketch rank", formatScore(node.sketchScore.composite));
+      if (node.implementationSketch) {
+        appendTextOrEmpty(sketch, node.implementationSketch.approach, "No sketch approach recorded.");
+        appendKeyValue(sketch, "Leaf", node.implementationSketch.leafId || node.id || "Not recorded");
+        appendKeyValue(sketch, "Complexity", node.implementationSketch.estimatedComplexity || "Not recorded");
+        appendKeyValue(sketch, "Confidence", formatPercent(node.implementationSketch.confidence || 0));
+        appendStructuredList(sketch, "Algorithm / Architecture", node.implementationSketch.algorithmOrArchitecture, "No architecture sketch recorded.");
+        appendStructuredList(sketch, "Likely Files", node.implementationSketch.filesLikelyChanged, "No likely files recorded.");
+        appendStructuredList(sketch, "Expected Tests", node.implementationSketch.expectedTests, "No expected tests recorded.");
+        appendStructuredList(sketch, "Risk Areas", node.implementationSketch.riskAreas, "No sketch risks recorded.");
+        appendField(sketch, "Rationale", node.implementationSketch.rationale || "No sketch rationale recorded.");
+      }
+      if (node.sketchScore) {
+        var sketchMetrics = document.createElement("div");
+        sketchMetrics.className = "mini-metrics";
+        appendMiniMetric(sketchMetrics, "Acceptance", formatScore(node.sketchScore.acceptanceCoverage));
+        appendMiniMetric(sketchMetrics, "Verification", formatScore(node.sketchScore.verificationPlanQuality));
+        appendMiniMetric(sketchMetrics, "Blast radius", formatScore(node.sketchScore.lowBlastRadius));
+        appendMiniMetric(sketchMetrics, "Risk", formatScore(node.sketchScore.riskReduction));
+        appendMiniMetric(sketchMetrics, "Complexity pen.", formatScore(node.sketchScore.complexityPenalty));
+        appendMiniMetric(sketchMetrics, "Uncertainty pen.", formatScore(node.sketchScore.uncertaintyPenalty));
+        sketch.appendChild(sketchMetrics);
+        appendField(sketch, "Sketch Rationale", node.sketchScore.rationale || "No sketch score rationale recorded.");
+      }
+      refs.tabContent.appendChild(sketch);
     }
 
     if (node.executionResult) {
@@ -2086,6 +2283,27 @@ function clientScript(): string {
         refs.tabContent.appendChild(testResults);
       }
 
+      if (node.executionResult.verification) {
+        var verification = section("Verification Results");
+        appendKeyValue(verification, "Passed", formatNumber(node.executionResult.verification.passed || 0));
+        appendKeyValue(verification, "Failed", formatNumber(node.executionResult.verification.failed || 0));
+        appendKeyValue(verification, "Required failed", formatNumber(node.executionResult.verification.requiredFailed || 0));
+        if (Array.isArray(node.executionResult.verification.results) && node.executionResult.verification.results.length > 0) {
+          node.executionResult.verification.results.forEach(function (result) {
+            var resultCard = document.createElement("div");
+            resultCard.className = "compact-card";
+            appendKeyValue(resultCard, "Command", result.command || result.commandId || "Not recorded");
+            appendKeyValue(resultCard, "Exit", result.exitCode === null || result.exitCode === undefined ? "n/a" : result.exitCode);
+            appendKeyValue(resultCard, "Result", result.passed ? "Passed" : "Failed");
+            appendKeyValue(resultCard, "Duration", formatDuration(result.durationMs));
+            if (result.stdout) appendField(resultCard, "Stdout", result.stdout);
+            if (result.stderr) appendField(resultCard, "Stderr", result.stderr);
+            verification.appendChild(resultCard);
+          });
+        }
+        refs.tabContent.appendChild(verification);
+      }
+
       if (node.executionResult.usage) {
         var usage = section("Codex Usage");
         appendKeyValue(usage, "Total", formatCodexTokens(node.executionResult.usage));
@@ -2106,7 +2324,10 @@ function clientScript(): string {
       appendScoreRow(score, "Intent", node.score.intentAlignment);
       appendScoreRow(score, "Real-world", node.score.realWorldFit);
       appendScoreRow(score, "Simplicity", node.score.simplicity);
+      appendScoreRow(score, "Uncertainty", node.score.uncertainty);
       appendTextOrEmpty(score, node.score.rationale, "No rationale recorded.");
+      appendStructuredList(score, "Evidence", node.score.evidence, "No judge evidence recorded.");
+      appendStructuredList(score, "Failures", node.score.failures, "No judge failures recorded.");
       refs.tabContent.appendChild(score);
     }
 
@@ -2121,8 +2342,259 @@ function clientScript(): string {
       appendScoreRow(fitness, "Risk reduction", node.fitness.riskReduction);
       appendScoreRow(fitness, "Cost efficiency", node.fitness.costEfficiency);
       appendScoreRow(fitness, "Uncertainty penalty", node.fitness.uncertaintyPenalty);
+      appendStructuredList(fitness, "Evidence", node.fitness.evidence, "No fitness evidence recorded.");
+      appendStructuredList(fitness, "Failures", node.fitness.failures, "No fitness failures recorded.");
       refs.tabContent.appendChild(fitness);
     }
+  }
+
+  function renderRunOverview() {
+    var run = state.run;
+    if (!run) {
+      return;
+    }
+
+    var overview = section("Run Overview");
+    var metrics = document.createElement("div");
+    metrics.className = "mini-metrics metric-grid-wide";
+    appendMiniMetric(metrics, "Run", run.id || "Not recorded");
+    appendMiniMetric(metrics, "Status", run.status || "Not recorded");
+    appendMiniMetric(metrics, "Mode", run.runMode || "Not recorded");
+    appendMiniMetric(metrics, "Leaves", Array.isArray(run.leafNodeIds) ? String(run.leafNodeIds.length) : "0");
+    appendMiniMetric(metrics, "Tool requests", formatNumber(countToolRequests(run.root)));
+    appendMiniMetric(metrics, "Tool evidence", formatNumber(countToolEvidence(run.root)));
+    appendMiniMetric(metrics, "Started", formatDateTime(run.startedAt));
+    appendMiniMetric(metrics, "Completed", formatDateTime(run.completedAt));
+    overview.appendChild(metrics);
+
+    appendField(overview, "Intent", run.intent || "No intent recorded.", "summary-block");
+    appendKeyValue(overview, "Selected agents", formatListValue(run.selectedAgents));
+    appendKeyValue(overview, "Leaf node IDs", formatListValue(run.leafNodeIds));
+    appendKeyValue(overview, "Total debate tokens", formatNumber(run.totalTokensUsed || 0));
+
+    if (run.llmUsage) {
+      var llm = document.createElement("div");
+      llm.className = "mini-metrics";
+      appendMiniMetric(llm, "LLM input", formatNumber(run.llmUsage.inputTokens || 0));
+      appendMiniMetric(llm, "LLM cached", formatNumber(run.llmUsage.cachedInputTokens || 0));
+      appendMiniMetric(llm, "LLM output", formatNumber(run.llmUsage.outputTokens || 0));
+      overview.appendChild(llm);
+    }
+
+    if (run.cacheStats) {
+      var cache = document.createElement("div");
+      cache.className = "mini-metrics";
+      appendMiniMetric(cache, "Cache hits", formatNumber(run.cacheStats.hits || 0));
+      appendMiniMetric(cache, "Cache misses", formatNumber(run.cacheStats.misses || 0));
+      appendMiniMetric(cache, "Cache writes", formatNumber(run.cacheStats.writes || 0));
+      overview.appendChild(cache);
+    }
+
+    refs.tabContent.appendChild(overview);
+
+    if (run.config) {
+      var routing = collapsibleSection("Model Routing", false);
+      renderRunConfig(routing.body, run.config);
+      refs.tabContent.appendChild(routing.details);
+    }
+  }
+
+  function renderRunConfig(parent, config) {
+    var primary = document.createElement("div");
+    primary.className = "mini-metrics metric-grid-wide";
+    appendMiniMetric(primary, "Provider", config.llmProvider || "Not recorded");
+    appendMiniMetric(primary, "Reasoning", config.reasoningModel || "Not recorded");
+    appendMiniMetric(primary, "Judge", config.judgeModel || "Not recorded");
+    appendMiniMetric(primary, "API env", config.llmApiKeyEnv || "Not recorded");
+    appendMiniMetric(primary, "Depth", formatNumber(config.maxDepth || 0));
+    appendMiniMetric(primary, "Branching", formatNumber(config.maxBranching || 0));
+    appendMiniMetric(primary, "Debate rounds", formatNumber(config.maxDebateRounds || 0));
+    appendMiniMetric(primary, "Concurrency", formatNumber(config.leafConcurrency || 0));
+    parent.appendChild(primary);
+
+    appendKeyValue(parent, "Working dir", config.workingDirectory || "Not recorded");
+    appendKeyValue(parent, "Dry run", String(Boolean(config.dryRun)));
+    appendKeyValue(parent, "Interactive plan", String(Boolean(config.interactivePlan)));
+    appendKeyValue(parent, "Deterministic cache", String(Boolean(config.enableDeterministicCache)));
+    appendKeyValue(parent, "Sketch ranking", String(Boolean(config.enableSketchRanking)));
+    appendKeyValue(parent, "Sketch top N", config.sketchExecutionTopN === undefined ? "Not recorded" : config.sketchExecutionTopN);
+    appendKeyValue(parent, "Prune threshold", config.pruneThreshold === undefined ? "Not recorded" : config.pruneThreshold);
+    appendKeyValue(parent, "Verification timeout", formatDuration(config.verificationTimeoutMs));
+    appendKeyValue(parent, "Cloud env", config.cloudEnv || "Not recorded");
+    appendKeyValue(parent, "Cloud attempts", config.cloudAttempts === undefined ? "Not recorded" : config.cloudAttempts);
+    appendStructuredObject(parent, {
+      modelTiers: config.modelTiers,
+      modelAssignments: config.modelAssignments,
+      phaseDepths: config.phaseDepths,
+      pruneSchedule: config.pruneSchedule,
+      verificationCommands: config.verificationCommands,
+    }, "No routing detail recorded.");
+  }
+
+  function renderRankedResults() {
+    var run = state.run;
+    if (!run || !Array.isArray(run.rankedResults) || run.rankedResults.length === 0) {
+      return;
+    }
+
+    var ranked = collapsibleSection("Ranked Results", false);
+    run.rankedResults.forEach(function (result, index) {
+      var card = document.createElement("div");
+      card.className = "alt-card";
+      var title = document.createElement("h4");
+      title.className = "alt-title";
+      title.textContent = "#" + String(index + 1) + " " + (Array.isArray(result.path) ? result.path.join(" / ") : result.nodeId || "Result");
+      card.appendChild(title);
+      appendKeyValue(card, "Node", result.nodeId || "Not recorded");
+      appendKeyValue(card, "Path", Array.isArray(result.path) ? result.path.join(" / ") : "Not recorded");
+      if (result.fitness) appendKeyValue(card, "Fitness", formatScore(result.fitness.composite));
+      if (result.score) appendKeyValue(card, "Judge", formatScore(result.score.composite));
+      if (result.score && result.score.rationale) appendField(card, "Rationale", result.score.rationale);
+      ranked.body.appendChild(card);
+    });
+    refs.tabContent.appendChild(ranked.details);
+  }
+
+  function renderIntentDecomposition(parent, decomposition) {
+    if (!hasMeaningfulValue(decomposition)) {
+      parent.appendChild(emptyBlock("No intent decomposition recorded."));
+      return;
+    }
+
+    appendStructuredList(parent, "Load Bearing Claims", decomposition.loadBearingClaims, "No load-bearing claims recorded.");
+    appendStructuredList(parent, "Undefined Terms", decomposition.undefinedTerms, "No undefined terms recorded.");
+    appendStructuredList(parent, "In Scope", decomposition.inScope, "No in-scope items recorded.");
+    appendStructuredList(parent, "Out of Scope", decomposition.outOfScope, "No out-of-scope items recorded.");
+    appendStructuredList(parent, "Known Unknowns", decomposition.knownUnknowns, "No known unknowns recorded.");
+    appendStructuredList(parent, "Feasibility Flags", decomposition.feasibilityFlags, "No feasibility flags recorded.");
+    appendField(parent, "Rationale", decomposition.rationale || "No decomposition rationale recorded.");
+  }
+
+  function renderIntentDossier(parent, dossier) {
+    if (!hasMeaningfulValue(dossier)) {
+      parent.appendChild(emptyBlock("No intent dossier recorded."));
+      return;
+    }
+
+    appendField(parent, "Goal", dossier.goal || "No goal recorded.", "summary-block");
+    appendField(parent, "User Value", dossier.userValue || "No user value recorded.");
+    appendStructuredList(parent, "Non-goals", dossier.nonGoals, "No non-goals recorded.");
+    appendStructuredList(parent, "Constraints", dossier.constraints, "No constraints recorded.");
+    appendStructuredList(parent, "Acceptance Criteria", dossier.acceptanceCriteria, "No dossier acceptance criteria recorded.");
+    appendStructuredList(parent, "Required Checks", dossier.requiredChecks, "No required checks recorded.");
+    appendStructuredList(parent, "Risk Areas", dossier.riskAreas, "No risk areas recorded.");
+    appendStructuredList(parent, "Known Unknowns", dossier.knownUnknowns, "No dossier known unknowns recorded.");
+    appendStructuredList(parent, "Success Signals", dossier.successSignals, "No success signals recorded.");
+    appendStructuredList(parent, "Failure Modes", dossier.failureModes, "No failure modes recorded.");
+  }
+
+  function renderCompactDebateState(parent, compactState) {
+    if (!hasMeaningfulValue(compactState)) {
+      parent.appendChild(emptyBlock("No compact debate state recorded."));
+      return;
+    }
+
+    appendStructuredList(parent, "Accepted Facts", compactState.acceptedFacts, "No accepted facts recorded.");
+    appendStructuredList(parent, "Locked Decisions", compactState.lockedDecisions, "No locked decisions recorded.");
+    appendStructuredList(parent, "Live Alternatives", compactState.liveAlternatives, "No live alternatives recorded.");
+    appendStructuredList(parent, "Killed Alternatives", compactState.killedAlternatives, "No killed alternatives recorded.");
+    appendStructuredList(parent, "Unresolved Questions", compactState.unresolvedQuestions, "No unresolved questions recorded.");
+    appendStructuredList(parent, "Risks", compactState.risks, "No compact risks recorded.");
+    appendStructuredList(parent, "Verification Ideas", compactState.verificationIdeas, "No verification ideas recorded.");
+    appendField(parent, "Last Round Summary", compactState.lastRoundSummary || "No compact summary recorded.", "summary-block");
+  }
+
+  function renderToolRequests(parent, requests) {
+    if (!Array.isArray(requests) || requests.length === 0) {
+      parent.appendChild(emptyBlock("No tool requests recorded for this node."));
+      return;
+    }
+
+    requests.forEach(function (request) {
+      var card = document.createElement("div");
+      card.className = "compact-card";
+      appendKeyValue(card, "Tool", request.toolName || "Not recorded");
+      appendKeyValue(card, "Query", request.query || "Not recorded");
+      appendKeyValue(card, "Status", request.status || "Not recorded");
+      appendKeyValue(card, "Requested by", request.requestedBy || "Not recorded");
+      appendKeyValue(card, "Round", request.roundNumber === undefined ? "Not recorded" : request.roundNumber);
+      appendKeyValue(card, "Created", formatDateTime(request.createdAt));
+      appendKeyValue(card, "Completed", formatDateTime(request.completedAt));
+      if (request.reason) {
+        appendField(card, "Reason", request.reason);
+      }
+      parent.appendChild(card);
+    });
+  }
+
+  function renderToolEvidence(parent, evidence) {
+    if (!Array.isArray(evidence) || evidence.length === 0) {
+      parent.appendChild(emptyBlock("No tool evidence recorded for this node."));
+      return;
+    }
+
+    evidence.forEach(function (item) {
+      var card = document.createElement("div");
+      card.className = "compact-card";
+      var title = document.createElement("h4");
+      title.className = "alt-title";
+      title.textContent = (item.toolName || "tool") + ": " + (item.query || "query");
+      card.appendChild(title);
+
+      appendField(card, "Summary", item.summary || "No summary recorded.", "summary-block");
+      appendKeyValue(card, "Request", item.requestId || "Not recorded");
+      appendKeyValue(card, "Requested by", item.requestedBy || "Not recorded");
+      appendKeyValue(
+        card,
+        "Additional requesters",
+        Array.isArray(item.additionalRequesters) && item.additionalRequesters.length > 0
+          ? item.additionalRequesters.join(", ")
+          : "None",
+      );
+      appendKeyValue(card, "Round", item.roundNumber === undefined ? "Not recorded" : item.roundNumber);
+      appendKeyValue(card, "Confidence", typeof item.confidence === "number" ? formatScore(item.confidence) : "n/a");
+      appendKeyValue(card, "Created", formatDateTime(item.createdAt));
+      appendStructuredList(card, "Findings", item.findings, "No findings recorded.");
+      appendStructuredList(card, "Decision Relevance", item.decisionRelevance, "No decision relevance recorded.");
+      appendStructuredList(card, "Constraints", item.constraintsDiscovered, "No constraints discovered.");
+      appendStructuredList(card, "Risks", item.risksDiscovered, "No risks discovered.");
+      appendStructuredList(card, "Open Questions", item.openQuestions, "No open questions recorded.");
+      appendStructuredList(card, "Limitations", item.limitations, "No limitations recorded.");
+      renderToolSources(card, item.sources);
+      parent.appendChild(card);
+    });
+  }
+
+  function renderToolSources(parent, sources) {
+    var wrapper = document.createElement("div");
+    wrapper.className = "field";
+
+    var label = document.createElement("div");
+    label.className = "field-label";
+    label.textContent = "Sources";
+    wrapper.appendChild(label);
+
+    if (!Array.isArray(sources) || sources.length === 0) {
+      wrapper.appendChild(emptyBlock("No sources recorded."));
+      parent.appendChild(wrapper);
+      return;
+    }
+
+    var list = document.createElement("ul");
+    list.className = "list";
+    sources.forEach(function (source) {
+      var item = document.createElement("li");
+      var sourceParts = [];
+      if (source.title) sourceParts.push(source.title);
+      if (source.path) sourceParts.push(source.path);
+      if (source.url) sourceParts.push(source.url);
+      if (source.quote) sourceParts.push(source.quote);
+      if (source.retrievedAt) sourceParts.push("retrieved " + formatDateTime(source.retrievedAt));
+      item.textContent = sourceParts.length > 0 ? sourceParts.join(" / ") : formatStructuredValue(source);
+      list.appendChild(item);
+    });
+    wrapper.appendChild(list);
+    parent.appendChild(wrapper);
   }
 
   function renderRunCodexUsage() {
@@ -2469,8 +2941,14 @@ function clientScript(): string {
       "Confidence",
       typeof alternative.confidence === "number" ? formatScore(alternative.confidence) : "n/a",
     );
+    appendMiniMetric(
+      metrics,
+      "Relevance",
+      typeof alternative.relevanceToIntent === "number" ? formatScore(alternative.relevanceToIntent) : "n/a",
+    );
     alt.appendChild(metrics);
 
+    appendKeyValue(alt, "ID", alternative.id || "Not recorded");
     appendField(alt, "Description", alternative.description || "No description recorded.");
     appendField(alt, "Rationale", alternative.rationale || "No rationale recorded.");
     return alt;
@@ -2580,6 +3058,145 @@ function clientScript(): string {
     parent.appendChild(pre);
   }
 
+  function appendStructuredObject(parent, value, emptyText) {
+    if (!hasMeaningfulValue(value)) {
+      parent.appendChild(emptyBlock(emptyText));
+      return;
+    }
+
+    var pre = document.createElement("pre");
+    pre.textContent = formatStructuredValue(value);
+    parent.appendChild(pre);
+  }
+
+  function appendStructuredList(parent, label, values, emptyText) {
+    var wrapper = document.createElement("div");
+    wrapper.className = "field";
+
+    var fieldLabel = document.createElement("div");
+    fieldLabel.className = "field-label";
+    fieldLabel.textContent = label;
+    wrapper.appendChild(fieldLabel);
+
+    if (!Array.isArray(values) || values.length === 0) {
+      wrapper.appendChild(emptyBlock(emptyText));
+      parent.appendChild(wrapper);
+      return;
+    }
+
+    var list = document.createElement("ul");
+    list.className = "list";
+    values.forEach(function (value) {
+      var item = document.createElement("li");
+      item.textContent = typeof value === "string" ? value : formatStructuredValue(value);
+      list.appendChild(item);
+    });
+    wrapper.appendChild(list);
+    parent.appendChild(wrapper);
+  }
+
+  function buildAncestorTimeline(node, pathNodes) {
+    var summaries = node && node.context && Array.isArray(node.context.ancestorSummaries)
+      ? node.context.ancestorSummaries
+      : [];
+    if (summaries.length === 0) {
+      return [];
+    }
+
+    var ancestors = Array.isArray(pathNodes) ? pathNodes.slice(0, -1) : [];
+    return summaries.map(function (summary, index) {
+      var ancestor = ancestors[index] || null;
+      var intervention = ancestor && ancestor.humanIntervention ? ancestor.humanIntervention : null;
+      var summaryText = String(summary || "");
+      var isHumanRevision = Boolean(intervention && (
+        summaryText.toLowerCase().indexOf("human revision") >= 0 ||
+        (intervention.prompt && summaryText.indexOf(intervention.prompt) >= 0)
+      ));
+
+      return {
+        summary: summaryText,
+        label: ancestor ? ancestor.branchLabel || "root" : "Ancestor",
+        nodeId: ancestor && ancestor.id ? ancestor.id : "",
+        phase: ancestor && ancestor.phase ? ancestor.phase : "",
+        status: ancestor && ancestor.status ? ancestor.status : "",
+        timestamp: isHumanRevision && intervention ? intervention.createdAt : ancestor ? ancestor.updatedAt || ancestor.createdAt : undefined
+      };
+    });
+  }
+
+  function normalizeTimelineEntry(value) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return {
+        summary: value.summary || value.text || "",
+        label: value.label || "",
+        nodeId: value.nodeId || "",
+        phase: value.phase || "",
+        status: value.status || "",
+        timestamp: value.timestamp
+      };
+    }
+
+    return {
+      summary: String(value || ""),
+      label: "",
+      nodeId: "",
+      phase: "",
+      status: "",
+      timestamp: undefined
+    };
+  }
+
+  function appendTimelineOrEmpty(parent, values, emptyText) {
+    if (!Array.isArray(values) || values.length === 0) {
+      parent.appendChild(emptyBlock(emptyText));
+      return;
+    }
+
+    var note = document.createElement("div");
+    note.className = "timeline-note";
+    note.textContent = "Oldest first";
+    parent.appendChild(note);
+
+    var list = document.createElement("ol");
+    list.className = "timeline";
+    values.forEach(function (value, index) {
+      var entry = normalizeTimelineEntry(value);
+      var item = document.createElement("li");
+      item.className = "timeline-item";
+
+      var marker = document.createElement("div");
+      marker.className = "timeline-index";
+      marker.textContent = String(index + 1);
+      item.appendChild(marker);
+
+      var card = document.createElement("div");
+      card.className = "timeline-card";
+
+      var label = document.createElement("div");
+      label.className = "timeline-label";
+      label.textContent = "Step " + String(index + 1) + " of " + String(values.length) + (entry.label ? " / " + entry.label : "");
+      card.appendChild(label);
+
+      var time = document.createElement("div");
+      time.className = "timeline-time";
+      time.textContent = formatDateTime(entry.timestamp);
+      card.appendChild(time);
+
+      var text = document.createElement("div");
+      text.className = "timeline-text";
+      splitSummaryParagraphs(entry.summary).forEach(function (paragraph) {
+        var paragraphNode = document.createElement("p");
+        paragraphNode.textContent = paragraph;
+        text.appendChild(paragraphNode);
+      });
+      card.appendChild(text);
+
+      item.appendChild(card);
+      list.appendChild(item);
+    });
+    parent.appendChild(list);
+  }
+
   function appendListOrEmpty(parent, values, emptyText) {
     if (!Array.isArray(values) || values.length === 0) {
       parent.appendChild(emptyBlock(emptyText));
@@ -2603,6 +3220,55 @@ function clientScript(): string {
     heading.textContent = title;
     wrapper.appendChild(heading);
     return wrapper;
+  }
+
+  function hasMeaningfulValue(value) {
+    if (value === undefined || value === null || value === "") {
+      return false;
+    }
+    if (Array.isArray(value)) {
+      return value.length > 0;
+    }
+    if (typeof value === "object") {
+      return Object.keys(value).length > 0;
+    }
+    return true;
+  }
+
+  function splitSummaryParagraphs(value) {
+    var normalized = String(value || "").replace(/\s+/g, " ").trim();
+    if (!normalized) {
+      return ["Not recorded"];
+    }
+
+    var sentences = normalized.match(/[^.!?]+[.!?]+(?:["')\]]+)?|[^.!?]+$/g);
+    if (!sentences || sentences.length <= 2) {
+      return [normalized];
+    }
+
+    var paragraphs = [];
+    for (var index = 0; index < sentences.length; index += 2) {
+      paragraphs.push(sentences.slice(index, index + 2).join(" ").replace(/\s+/g, " ").trim());
+    }
+    return paragraphs;
+  }
+
+  function formatListValue(values) {
+    return Array.isArray(values) && values.length > 0 ? values.join(", ") : "Not recorded";
+  }
+
+  function formatStructuredValue(value) {
+    if (value === undefined || value === null) {
+      return "Not recorded";
+    }
+    if (typeof value === "string") {
+      return value;
+    }
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch (error) {
+      return String(value);
+    }
   }
 
   function emptyBlock(text) {
@@ -2756,6 +3422,27 @@ function clientScript(): string {
     var children = Array.isArray(node.children) ? node.children : [];
     return 1 + children.reduce(function (total, child) {
       return total + countAllNodes(child);
+    }, 0);
+  }
+
+  function countToolRequests(node) {
+    if (!node) {
+      return 0;
+    }
+    var children = Array.isArray(node.children) ? node.children : [];
+    return (Array.isArray(node.toolRequests) ? node.toolRequests.length : 0) + children.reduce(function (total, child) {
+      return total + countToolRequests(child);
+    }, 0);
+  }
+
+  function countToolEvidence(node) {
+    if (!node) {
+      return 0;
+    }
+    var children = Array.isArray(node.children) ? node.children : [];
+    var context = node.context || {};
+    return (Array.isArray(context.toolEvidence) ? context.toolEvidence.length : 0) + children.reduce(function (total, child) {
+      return total + countToolEvidence(child);
     }, 0);
   }
 
@@ -2925,6 +3612,13 @@ function clientScript(): string {
       return "n/a";
     }
     return Number.isInteger(value) ? String(value) : value.toFixed(2);
+  }
+
+  function formatPercent(value) {
+    if (typeof value !== "number" || Number.isNaN(value)) {
+      return "n/a";
+    }
+    return Math.round(value * 100) + "%";
   }
 
   function formatNumber(value) {

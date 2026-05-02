@@ -14,11 +14,14 @@ export interface RunSummary {
   completedAt?: string;
   leafCount: number;
   bestScore?: number;
+  toolRequestCount: number;
+  toolEvidenceCount: number;
   codexUsageTotal?: CodexUsage;
   codexUsageByLeaf: LeafCodexUsageSummary[];
 }
 
 export function summarizeRun(run: RunState): RunSummary {
+  const allNodes = flattenNodes(run.root);
   const leaves = collectLeaves(run.root);
   const scoredComposites = leaves
     .map((leaf) => leaf.fitness?.composite ?? leaf.score?.composite)
@@ -52,9 +55,18 @@ export function summarizeRun(run: RunState): RunSummary {
     completedAt: run.completedAt,
     leafCount: leaves.length,
     bestScore: scoredComposites.length > 0 ? Math.max(...scoredComposites) : undefined,
+    toolRequestCount: allNodes.reduce((count, node) => count + (node.toolRequests?.length ?? 0), 0),
+    toolEvidenceCount: allNodes.reduce(
+      (count, node) => count + (node.context.toolEvidence?.length ?? 0),
+      0,
+    ),
     codexUsageTotal,
     codexUsageByLeaf,
   };
+}
+
+function flattenNodes(node: TreeNode): TreeNode[] {
+  return [node, ...node.children.flatMap((child) => flattenNodes(child))];
 }
 
 function collectLeaves(node: TreeNode): TreeNode[] {

@@ -19,6 +19,7 @@ function node(overrides: Partial<TreeNode>): TreeNode {
     createdAt: overrides.createdAt ?? "2026-04-28T00:00:00.000Z",
     updatedAt: overrides.updatedAt ?? "2026-04-28T00:00:00.000Z",
     debate: overrides.debate,
+    toolRequests: overrides.toolRequests,
     executionResult: overrides.executionResult,
     score: overrides.score,
     fitness: overrides.fitness,
@@ -110,6 +111,44 @@ describe("summarizeRun", () => {
       children: [lowScoredLeaf, highScoredLeaf],
     });
     const root = node({ id: "node-root", children: [branch, unscoredLeaf] });
+    root.toolRequests = [
+      {
+        id: "request-1",
+        toolName: "repo-search",
+        query: "summarizeRun tool counts",
+        requestedBy: "developer",
+        nodeId: "node-root",
+        roundNumber: 1,
+        status: "completed",
+        createdAt: "2026-05-02T00:00:00.000Z",
+        completedAt: "2026-05-02T00:00:01.000Z",
+      },
+    ];
+    highScoredLeaf.context = {
+      ...highScoredLeaf.context,
+      toolEvidence: [
+        {
+          id: "evidence-1",
+          requestId: "request-1",
+          toolName: "repo-search",
+          query: "summarizeRun tool counts",
+          requestedBy: "developer",
+          additionalRequesters: [],
+          nodeId: "node-high",
+          roundNumber: 1,
+          summary: "Run summaries count tool evidence across all nodes.",
+          findings: ["Evidence is stored in node context."],
+          decisionRelevance: ["Expose tool evidence count in run cards."],
+          constraintsDiscovered: [],
+          risksDiscovered: [],
+          openQuestions: [],
+          sources: [{ path: "src/ui/run-summary.ts", retrievedAt: "2026-05-02T00:00:00.000Z" }],
+          limitations: [],
+          confidence: 0.8,
+          createdAt: "2026-05-02T00:00:01.000Z",
+        },
+      ],
+    };
 
     const summary = summarizeRun(
       run({
@@ -129,6 +168,8 @@ describe("summarizeRun", () => {
       completedAt: "2026-04-28T02:30:00.000Z",
       leafCount: 3,
       bestScore: 0.95,
+      toolRequestCount: 1,
+      toolEvidenceCount: 1,
       codexUsageTotal: undefined,
       codexUsageByLeaf: [],
     });

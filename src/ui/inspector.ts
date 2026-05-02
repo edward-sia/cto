@@ -4,7 +4,11 @@ import type {
   DebateTranscript,
   FitnessScore,
   JudgeScore,
+  LeafImplementationSketch,
+  LeafSketchScore,
   NodeContext,
+  ToolEvidence,
+  ToolRequest,
   TreeNode,
 } from "../types/index.js";
 
@@ -29,10 +33,19 @@ export interface InspectorViewModel {
     tokenUsage?: number;
   };
   context: NodeContext;
+  tools: {
+    requestCount: number;
+    evidenceCount: number;
+    requests: ToolRequest[];
+    evidence: ToolEvidence[];
+  };
   leaf?: {
     executionResult?: CodexExecutionResult;
     score?: JudgeScore;
     fitness?: FitnessScore;
+    implementationSketch?: LeafImplementationSketch;
+    sketchScore?: LeafSketchScore;
+    skippedExecutionReason?: string;
     filesChanged: string[];
   };
 }
@@ -59,11 +72,20 @@ export function buildInspector(node: TreeNode): InspectorViewModel {
       tokenUsage: node.debate?.tokenUsage,
     },
     context: node.context,
+    tools: {
+      requestCount: node.toolRequests?.length ?? 0,
+      evidenceCount: node.context.toolEvidence?.length ?? 0,
+      requests: node.toolRequests ?? [],
+      evidence: node.context.toolEvidence ?? [],
+    },
     leaf:
-      node.executionResult || node.score
+      node.executionResult || node.score || node.implementationSketch || node.skippedExecutionReason
         ? {
             executionResult: node.executionResult,
             score: node.score,
+            ...(node.implementationSketch ? { implementationSketch: node.implementationSketch } : {}),
+            ...(node.sketchScore ? { sketchScore: node.sketchScore } : {}),
+            ...(node.skippedExecutionReason ? { skippedExecutionReason: node.skippedExecutionReason } : {}),
             ...(node.fitness ? { fitness: node.fitness } : {}),
             filesChanged: node.executionResult?.filesChanged ?? [],
           }

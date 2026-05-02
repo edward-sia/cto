@@ -11,6 +11,28 @@ const context: NodeContext = {
   implementationSpec: "Expose summary and inspector adapters.",
   testStrategy: "Unit-test fixtures around scored leaves.",
   ancestorSummaries: ["Root clarified saved run browsing.", "Branch selected view-model layer."],
+  toolEvidence: [
+    {
+      id: "evidence-1",
+      requestId: "request-1",
+      toolName: "repo-search",
+      query: "buildInspector",
+      requestedBy: "developer",
+      additionalRequesters: [],
+      nodeId: "node-scored",
+      roundNumber: 1,
+      summary: "Inspector builds serializable view models.",
+      findings: ["Context is passed through."],
+      decisionRelevance: ["Show tool evidence in the context tab."],
+      constraintsDiscovered: ["Keep UI data serializable."],
+      risksDiscovered: [],
+      openQuestions: [],
+      sources: [{ path: "src/ui/inspector.ts", retrievedAt: "2026-05-02T00:00:00.000Z" }],
+      limitations: ["Fixture evidence."],
+      confidence: 0.8,
+      createdAt: "2026-05-02T00:00:01.000Z",
+    },
+  ],
 };
 
 const debate: DebateTranscript = {
@@ -48,6 +70,19 @@ function scoredNode(overrides: Partial<TreeNode> = {}): TreeNode {
     branchLabel: overrides.branchLabel ?? "Persisted view models",
     branchDescription: overrides.branchDescription ?? "Create serializable data for the saved-run UI.",
     debate: overrides.debate ?? debate,
+    toolRequests: overrides.toolRequests ?? [
+      {
+        id: "request-1",
+        toolName: "repo-search",
+        query: "buildInspector",
+        requestedBy: "developer",
+        nodeId: "node-scored",
+        roundNumber: 1,
+        status: "completed",
+        createdAt: "2026-05-02T00:00:00.000Z",
+        completedAt: "2026-05-02T00:00:01.000Z",
+      },
+    ],
     executionResult:
       "executionResult" in overrides
         ? overrides.executionResult
@@ -64,6 +99,9 @@ function scoredNode(overrides: Partial<TreeNode> = {}): TreeNode {
           output: "vitest passed",
         },
       },
+    implementationSketch: overrides.implementationSketch,
+    sketchScore: overrides.sketchScore,
+    skippedExecutionReason: overrides.skippedExecutionReason,
     score:
       "score" in overrides
         ? overrides.score
@@ -107,6 +145,10 @@ describe("buildInspector", () => {
       tokenUsage: 432,
     });
     expect(inspector.context).toBe(context);
+    expect(inspector.tools.requestCount).toBe(1);
+    expect(inspector.tools.evidenceCount).toBe(1);
+    expect(inspector.tools.requests[0].query).toBe("buildInspector");
+    expect(inspector.tools.evidence[0].summary).toContain("serializable view models");
     expect(inspector.leaf).toEqual({
       executionResult: node.executionResult,
       score: node.score,
@@ -160,5 +202,41 @@ describe("buildInspector", () => {
     expect(inspector.leaf?.executionResult).toBeUndefined();
     expect(inspector.leaf?.score?.composite).toBe(0.8);
     expect(inspector.leaf?.filesChanged).toEqual([]);
+  });
+
+  it("exposes sketch evidence for leaves skipped before execution", () => {
+    const node = scoredNode({
+      executionResult: undefined,
+      score: undefined,
+      implementationSketch: {
+        leafId: "node-scored",
+        approach: "Implement the lean API path.",
+        filesLikelyChanged: ["src/api/**"],
+        algorithmOrArchitecture: ["REST CRUD"],
+        riskAreas: ["Auth scope unknown"],
+        expectedTests: ["CRUD route tests"],
+        estimatedComplexity: "medium",
+        confidence: 0.8,
+        rationale: "Low blast radius.",
+      },
+      sketchScore: {
+        leafId: "node-scored",
+        acceptanceCoverage: 8,
+        verificationPlanQuality: 8,
+        lowBlastRadius: 7,
+        riskReduction: 7,
+        complexityPenalty: 2,
+        uncertaintyPenalty: 2,
+        composite: 7.2,
+        rationale: "Good coverage.",
+      },
+      skippedExecutionReason: "Skipped before Codex execution: sketch ranked below top 2.",
+    });
+
+    const inspector = buildInspector(node);
+
+    expect(inspector.leaf?.implementationSketch?.approach).toContain("lean API");
+    expect(inspector.leaf?.sketchScore?.composite).toBe(7.2);
+    expect(inspector.leaf?.skippedExecutionReason).toContain("top 2");
   });
 });

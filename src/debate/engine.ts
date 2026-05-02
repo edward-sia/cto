@@ -32,6 +32,8 @@ import { withRetry } from "../utils/retry.js";
 import { addUsageFromResponse, emptyUsage } from "../utils/usage.js";
 import type { LLMUsage } from "../types/index.js";
 
+const DEFAULT_TOOL_EVIDENCE_PROMPT_LIMIT = 8;
+
 function mergeContextUpdates(
   target: Partial<NodeContext>,
   source: Partial<NodeContext>
@@ -403,7 +405,7 @@ export class DebateEngine {
         this.onProgress?.({
           type: "tools_resolved",
           round: roundNum,
-          requested: roundToolRequests.length,
+          requested: resolved.requests.length,
           completed: resolved.requests.filter((request) => request.status === "completed").length,
           skipped: resolved.requests.filter((request) => request.status === "skipped").length,
           failed: resolved.requests.filter((request) => request.status === "failed").length,
@@ -464,7 +466,7 @@ export class DebateEngine {
     const transcript = compactMessages(roundMessages);
     const toolEvidenceSection = renderToolEvidenceForPrompt(
       context.toolEvidence,
-      context.toolEvidence?.length ?? 0
+      DEFAULT_TOOL_EVIDENCE_PROMPT_LIMIT
     );
 
     const alternativesSummary =

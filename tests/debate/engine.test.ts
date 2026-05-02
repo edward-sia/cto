@@ -71,6 +71,7 @@ describe("DebateEngine tool integration", () => {
   it("resolves tool requests before moderator assessment and renders evidence in the moderator prompt", async () => {
     const calls: IncomingToolRequest[][] = [];
     const events: string[] = [];
+    const toolEvents: Array<{ requested: number; completed: number; skipped: number; failed: number }> = [];
     let createCalls = 0;
     let moderatorPrompt = "";
     const response = (content: string) => ({
@@ -87,8 +88,8 @@ describe("DebateEngine tool integration", () => {
         completions: {
           async create(input: { messages: Array<{ role: string; content: unknown }> }) {
             createCalls += 1;
-            if (createCalls === 1) {
-              return response(`[developer] Need docs.
+            if (createCalls <= 2) {
+              return response(`[${createCalls === 1 ? "developer" : "tech-lead"}] Need docs.
 TOOL_REQUEST [docs-fetch]: official docs for implementation`);
             }
 
@@ -107,39 +108,39 @@ TOOL_REQUEST [docs-fetch]: official docs for implementation`);
         events.push("broker");
         calls.push(input.requests);
         return {
-          requests: input.requests.map((request, idx) => ({
-            id: `request-${idx + 1}`,
-            toolName: request.toolName,
-            query: request.query,
-            requestedBy: request.requestedBy,
-            nodeId: input.nodeId,
-            roundNumber: input.roundNumber,
-            status: "completed",
-            createdAt: "2026-05-02T00:00:00.000Z",
-            completedAt: "2026-05-02T00:00:01.000Z",
-          })),
-          evidence: [
+          requests: [
             {
-              id: "evidence-1",
-              requestId: "request-1",
-              toolName: "docs-fetch",
-              query: "official docs",
-              requestedBy: "developer",
-              additionalRequesters: [],
+              id: "request-1",
+              toolName: input.requests[0].toolName,
+              query: input.requests[0].query,
+              requestedBy: input.requests[0].requestedBy,
               nodeId: input.nodeId,
               roundNumber: input.roundNumber,
-              summary: "Official docs support the requested API.",
-              findings: ["The API is documented."],
-              decisionRelevance: ["Proceed with documented API."],
-              constraintsDiscovered: ["Use documented parameters."],
-              risksDiscovered: [],
-              openQuestions: [],
-              sources: [{ title: "Docs", url: "https://example.com", retrievedAt: "2026-05-02T00:00:00.000Z" }],
-              limitations: [],
-              confidence: 0.8,
-              createdAt: "2026-05-02T00:00:01.000Z",
+              status: "completed",
+              createdAt: "2026-05-02T00:00:00.000Z",
+              completedAt: "2026-05-02T00:00:01.000Z",
             },
           ],
+          evidence: Array.from({ length: 9 }, (_, idx) => ({
+            id: `evidence-${idx + 1}`,
+            requestId: "request-1",
+            toolName: "docs-fetch",
+            query: "official docs",
+            requestedBy: "developer",
+            additionalRequesters: [],
+            nodeId: input.nodeId,
+            roundNumber: input.roundNumber,
+            summary: idx === 8 ? "Official docs support the requested API." : `Older evidence summary ${idx + 1}.`,
+            findings: [idx === 8 ? "The API is documented." : `Older finding ${idx + 1}.`],
+            decisionRelevance: ["Proceed with documented API."],
+            constraintsDiscovered: ["Use documented parameters."],
+            risksDiscovered: [],
+            openQuestions: [],
+            sources: [{ title: "Docs", url: "https://example.com", retrievedAt: "2026-05-02T00:00:00.000Z" }],
+            limitations: [],
+            confidence: 0.8,
+            createdAt: "2026-05-02T00:00:01.000Z",
+          })),
         };
       },
     };
@@ -154,6 +155,7 @@ TOOL_REQUEST [docs-fetch]: official docs for implementation`);
       toolBroker: fakeBroker,
       onProgress(event) {
         if (event.type === "tools_resolved") events.push("tools");
+        if (event.type === "tools_resolved") toolEvents.push(event);
         if (event.type === "moderator_assessment") events.push("moderator");
       },
     });
@@ -164,7 +166,7 @@ TOOL_REQUEST [docs-fetch]: official docs for implementation`);
         originalIntent: "Build with researched docs",
         ancestorSummaries: [],
       },
-      ["developer"]
+      ["developer", "tech-lead"]
     );
 
     expect(calls[0]).toEqual([
@@ -173,13 +175,26 @@ TOOL_REQUEST [docs-fetch]: official docs for implementation`);
         query: "official docs for implementation",
         requestedBy: "developer",
       },
+      {
+        toolName: "docs-fetch",
+        query: "official docs for implementation",
+        requestedBy: "tech-lead",
+      },
     ]);
     expect(transcript.toolRequests?.[0].status).toBe("completed");
-    expect(transcript.contextUpdates.toolEvidence?.[0].summary).toContain("Official docs");
+    expect(transcript.contextUpdates.toolEvidence?.at(-1)?.summary).toContain("Official docs");
     expect(transcript.compactState?.evidenceFindings).toContain("The API is documented.");
     expect(moderatorPrompt).toContain("## Current Tool Evidence");
+    expect(moderatorPrompt).not.toContain("Older evidence summary 1.");
+    expect(moderatorPrompt).not.toContain("Older finding 1.");
     expect(moderatorPrompt).toContain("Official docs support the requested API.");
     expect(moderatorPrompt).toContain("The API is documented.");
+    expect(toolEvents[0]).toMatchObject({
+      requested: 1,
+      completed: 1,
+      skipped: 0,
+      failed: 0,
+    });
     expect(events).toEqual(expect.arrayContaining(["broker", "tools", "moderator"]));
     expect(events.indexOf("broker")).toBeLessThan(events.indexOf("moderator"));
     expect(events.indexOf("tools")).toBeLessThan(events.indexOf("moderator"));

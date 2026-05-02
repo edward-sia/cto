@@ -1,8 +1,34 @@
 import { describe, expect, it } from "vitest";
 import { AGENT_DEFINITIONS, buildAgentPrompt, parseAgentResponse } from "../../src/agents/definitions.js";
+import { ToolEvidenceSchema, ToolRequestSchema } from "../../src/schemas/index.js";
 import { AGENT_ROLES, PHASE_AGENTS } from "../../src/types/index.js";
 
 describe("parseAgentResponse", () => {
+  it("extracts structured tool requests while keeping normal context updates", () => {
+    const raw = `## Implementation Plan
+We need current docs before choosing the CLI shape.
+
+TOOL_REQUEST [docs-fetch]: official Commander.js custom option parser documentation
+TOOL_REQUEST [repo-search]: collectValues helper in CLI options
+CONTEXT_UPDATE [implementation-spec]: Preserve existing Commander option parser patterns.`;
+
+    const result = parseAgentResponse("developer", raw);
+
+    expect(result.toolRequests).toEqual([
+      {
+        toolName: "docs-fetch",
+        query: "official Commander.js custom option parser documentation",
+      },
+      {
+        toolName: "repo-search",
+        query: "collectValues helper in CLI options",
+      },
+    ]);
+    expect(result.contextUpdates?.implementationSpec).toBe(
+      "Preserve existing Commander option parser patterns."
+    );
+  });
+
   it("accumulates each qa-engineer test scenario into a separate acceptanceCriteria entry", () => {
     const raw = `## Test Strategy
 Here is the plan.
@@ -38,6 +64,82 @@ describe("buildAgentPrompt", () => {
 
     expect(user).toContain("Human Revision");
     expect(user).toContain("Prefer local-first storage.");
+  });
+
+  it("uses compact debate state instead of full prior transcript when provided", () => {
+    const { user } = buildAgentPrompt(AGENT_DEFINITIONS["developer"], {
+      priorRoundsHistory: [],
+      currentRoundSoFar: [],
+      compactDebateState: {
+        acceptedFacts: ["The API must support todos."],
+        lockedDecisions: ["Use REST resources."],
+        liveAlternatives: [
+          {
+            id: "alt-a",
+            label: "Lean API",
+            summary: "Implement core CRUD first.",
+            supportingAgents: ["tech-lead"],
+            risks: [],
+            verificationIdeas: [],
+            confidence: 0.8,
+            relevanceToIntent: 0.9,
+          },
+        ],
+        killedAlternatives: [],
+        unresolvedQuestions: ["Auth scope is unknown."],
+        risks: ["Avoid inventing OAuth requirements."],
+        verificationIdeas: ["Unit test route handlers."],
+        evidenceFindings: [],
+        evidenceConstraints: [],
+        evidenceRisks: [],
+        evidenceOpenQuestions: [],
+        lastRoundSummary: "The team narrowed around REST.",
+      },
+      phase: "implementation",
+      roundNumber: 2,
+      context: {
+        originalIntent: "Build a REST API",
+        ancestorSummaries: [],
+      },
+    });
+
+    expect(user).toContain("Compact Debate Context For This Round");
+    expect(user).toContain("Lean API: Implement core CRUD first.");
+    expect(user).not.toContain("## Previous Rounds");
+  });
+});
+
+describe("Tool schemas", () => {
+  it("validates persisted tool evidence", () => {
+    const parsed = ToolEvidenceSchema.parse({
+      id: "evidence-1",
+      requestId: "request-1",
+      toolName: "docs-fetch",
+      query: "official Commander docs",
+      requestedBy: "developer",
+      additionalRequesters: ["technical-writer"],
+      nodeId: "node-1",
+      roundNumber: 1,
+      summary: "Commander supports custom option processors.",
+      findings: ["Repeatable options can be collected with a parser."],
+      decisionRelevance: ["Use Commander instead of custom argv parsing."],
+      constraintsDiscovered: ["Parser must preserve previous values."],
+      risksDiscovered: ["Local wrapper still needs tests."],
+      openQuestions: [],
+      sources: [
+        {
+          title: "Commander options docs",
+          url: "https://example.com/commander",
+          retrievedAt: "2026-05-02T00:00:00.000Z",
+        },
+      ],
+      limitations: ["Fixture URL is not real documentation."],
+      confidence: 0.8,
+      createdAt: "2026-05-02T00:00:01.000Z",
+    });
+
+    expect(parsed.toolName).toBe("docs-fetch");
+    expect(parsed.sources[0].retrievedAt).toBe("2026-05-02T00:00:00.000Z");
   });
 });
 

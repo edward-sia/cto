@@ -3,12 +3,14 @@
  * Think of these like character sheets in a tabletop RPG.
  */
 
+import { TOOL_NAMES } from "../types/index.js";
 import type {
   AgentRole,
   AgentInput,
   AgentOutput,
   DebateMessage,
   NodeContext,
+  ToolName,
   TreePhase,
 } from "../types/index.js";
 
@@ -1001,6 +1003,10 @@ ${decomp.feasibilityFlags.map((f) => `- ${f}`).join("\n") || "- (none)"}`
     ? `## Previous Rounds\n${renderMessages(input.priorRoundsHistory)}`
     : "";
 
+  const compactDebateSection = input.compactDebateState
+    ? renderCompactDebateState(input.compactDebateState)
+    : "";
+
   const currentRoundSection = input.currentRoundSoFar.length
     ? `## This Round — Agents Who Have Already Spoken\n${renderMessages(input.currentRoundSoFar)}\n\nNote: you can reference what they said and build on, challenge, or support their points.`
     : "";
@@ -1014,7 +1020,7 @@ ${decomp.feasibilityFlags.map((f) => `- ${f}`).join("\n") || "- (none)"}`
 
 ${contextSummary}
 
-${[priorRoundsSection, currentRoundSection, openingLine].filter(Boolean).join("\n\n")}
+${[compactDebateSection, priorRoundsSection, currentRoundSection, openingLine].filter(Boolean).join("\n\n")}
 
 ---
 
@@ -1029,6 +1035,61 @@ ALTERNATIVE [label]: [description] — RATIONALE: [why this deserves its own bra
 Emit CONTEXT_UPDATE lines only for concrete, new additions not already present in the context above.`;
 
   return { system: agent.systemPrompt, user };
+}
+
+function renderCompactDebateState(state: NonNullable<AgentInput["compactDebateState"]>): string {
+  const lines = ["## Compact Debate Context For This Round"];
+  if (state.lastRoundSummary) {
+    lines.push(`Last round: ${state.lastRoundSummary}`);
+  }
+  if (state.acceptedFacts.length) {
+    lines.push("", "Accepted facts:", ...state.acceptedFacts.map((item) => `- ${item}`));
+  }
+  if (state.lockedDecisions.length) {
+    lines.push("", "Locked decisions:", ...state.lockedDecisions.map((item) => `- ${item}`));
+  }
+  if (state.liveAlternatives.length) {
+    lines.push(
+      "",
+      "Live alternatives:",
+      ...state.liveAlternatives.map((alt) =>
+        `- ${alt.label}: ${alt.summary} (support: ${alt.supportingAgents.join(", ") || "none"}, confidence=${alt.confidence.toFixed(2)}, relevance=${alt.relevanceToIntent.toFixed(2)})`
+      )
+    );
+  }
+  if (state.killedAlternatives.length) {
+    lines.push(
+      "",
+      "Rejected alternatives:",
+      ...state.killedAlternatives.map((alt) => `- ${alt.label}: ${alt.reason}`)
+    );
+  }
+  if (state.unresolvedQuestions.length) {
+    lines.push("", "Unresolved questions:", ...state.unresolvedQuestions.map((item) => `- ${item}`));
+  }
+  if (state.risks.length) {
+    lines.push("", "Risks to address:", ...state.risks.map((item) => `- ${item}`));
+  }
+  if (state.verificationIdeas.length) {
+    lines.push("", "Verification ideas:", ...state.verificationIdeas.map((item) => `- ${item}`));
+  }
+  const evidenceFindings = state.evidenceFindings ?? [];
+  if (evidenceFindings.length) {
+    lines.push("", "Evidence findings:", ...evidenceFindings.map((item) => `- ${item}`));
+  }
+  const evidenceConstraints = state.evidenceConstraints ?? [];
+  if (evidenceConstraints.length) {
+    lines.push("", "Evidence constraints:", ...evidenceConstraints.map((item) => `- ${item}`));
+  }
+  const evidenceRisks = state.evidenceRisks ?? [];
+  if (evidenceRisks.length) {
+    lines.push("", "Evidence risks:", ...evidenceRisks.map((item) => `- ${item}`));
+  }
+  const evidenceOpenQuestions = state.evidenceOpenQuestions ?? [];
+  if (evidenceOpenQuestions.length) {
+    lines.push("", "Evidence open questions:", ...evidenceOpenQuestions.map((item) => `- ${item}`));
+  }
+  return lines.join("\n");
 }
 
 function renderDomainFacts(facts: import("../types/index.js").DomainFacts): string {
@@ -1084,6 +1145,7 @@ export function parseAgentResponse(
   rawResponse: string
 ): AgentOutput {
   const alternatives: AgentOutput["proposedAlternatives"] = [];
+  const toolRequests: AgentOutput["toolRequests"] = [];
 
   const altRegex =
     /ALTERNATIVE\s+\[([^\]]+)\]:\s*(.+?)(?:\s*—\s*RATIONALE:\s*(.+?))?(?=\nALTERNATIVE|\n##|\n\n|$)/gis;
@@ -1130,10 +1192,26 @@ export function parseAgentResponse(
     }
   }
 
+  const toolNameSet = new Set<string>(TOOL_NAMES);
+  const toolRequestRegex =
+    /TOOL_REQUEST\s+\[([^\]]+)\]:\s*(.+?)(?=\nTOOL_REQUEST|\nCONTEXT_UPDATE|\n##|\n\n|$)/gis;
+  let toolMatch: RegExpExecArray | null;
+  while ((toolMatch = toolRequestRegex.exec(rawResponse)) !== null) {
+    const toolName = toolMatch[1].trim();
+    const query = toolMatch[2].trim();
+    if (toolNameSet.has(toolName) && query) {
+      toolRequests.push({
+        toolName: toolName as ToolName,
+        query,
+      });
+    }
+  }
+
   return {
     message: rawResponse,
     proposedAlternatives: alternatives.length > 0 ? alternatives : undefined,
     supportedAlternativeId: supportMatch?.[1]?.trim(),
     contextUpdates: Object.keys(contextUpdates).length > 0 ? contextUpdates : undefined,
+    toolRequests: toolRequests.length > 0 ? toolRequests : undefined,
   };
 }

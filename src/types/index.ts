@@ -118,6 +118,32 @@ export interface Alternative {
   relevanceToIntent: number;
 }
 
+export interface CompactDebateAlternative {
+  id: string;
+  label: string;
+  summary: string;
+  supportingAgents: AgentRole[];
+  risks: string[];
+  verificationIdeas: string[];
+  confidence: number;
+  relevanceToIntent: number;
+}
+
+export interface CompactDebateState {
+  acceptedFacts: string[];
+  lockedDecisions: string[];
+  liveAlternatives: CompactDebateAlternative[];
+  killedAlternatives: Array<{ label: string; reason: string }>;
+  unresolvedQuestions: string[];
+  risks: string[];
+  verificationIdeas: string[];
+  evidenceFindings: string[];
+  evidenceConstraints: string[];
+  evidenceRisks: string[];
+  evidenceOpenQuestions: string[];
+  lastRoundSummary: string;
+}
+
 export interface DebateTranscript {
   rounds: DebateRound[];
   finalOutcome: "consensus" | "branched";
@@ -125,6 +151,7 @@ export interface DebateTranscript {
   tokenUsage: number;
   llmUsage: LLMUsage;
   contextUpdates: Partial<NodeContext>;
+  compactState?: CompactDebateState;
 }
 
 export interface HumanIntervention {
@@ -210,11 +237,80 @@ export interface PruneSchedulePoint {
   threshold: number;
 }
 
+export const TOOL_NAMES = [
+  "web-search",
+  "web-fetch",
+  "docs-fetch",
+  "repo-search",
+  "repo-read",
+  "package-info",
+] as const;
+
+export type ToolName = (typeof TOOL_NAMES)[number];
+
+export interface ToolUseConfig {
+  enabled: boolean;
+  allowlist: ToolName[];
+  maxRequestsPerNode: number;
+  maxRequestsPerRound: number;
+  maxRequestsPerRun: number;
+  maxEvidenceItemsInPrompt: number;
+  autoRunReadOnly: boolean;
+}
+
+export interface ToolRequest {
+  id: string;
+  toolName: ToolName;
+  query: string;
+  requestedBy: AgentRole;
+  nodeId: string;
+  roundNumber: number;
+  status: "pending" | "running" | "completed" | "skipped" | "failed";
+  reason?: string;
+  createdAt: string;
+  completedAt?: string;
+}
+
+export interface ParsedToolRequest {
+  toolName: ToolName;
+  query: string;
+}
+
+export interface ToolEvidenceSource {
+  title?: string;
+  url?: string;
+  path?: string;
+  quote?: string;
+  retrievedAt: string;
+}
+
+export interface ToolEvidence {
+  id: string;
+  requestId: string;
+  toolName: ToolName;
+  query: string;
+  requestedBy: AgentRole;
+  additionalRequesters: AgentRole[];
+  nodeId: string;
+  roundNumber: number;
+  summary: string;
+  findings: string[];
+  decisionRelevance: string[];
+  constraintsDiscovered: string[];
+  risksDiscovered: string[];
+  openQuestions: string[];
+  sources: ToolEvidenceSource[];
+  limitations: string[];
+  confidence: number;
+  createdAt: string;
+}
+
 export interface NodeContext {
   originalIntent: string;
   intentDecomposition?: IntentDecomposition;
   intentDossier?: IntentDossier;
   domainFacts?: DomainFacts;
+  toolEvidence?: ToolEvidence[];
   prd?: string;
   acceptanceCriteria?: string[];
   architectureDecisions?: string[];
@@ -238,6 +334,41 @@ export interface CodexUsage {
   reasoningOutputTokens: number;
 }
 
+export type ModelTier = "cheap" | "mid" | "strong";
+
+export type ModelStage =
+  | "analyzer"
+  | "decomposer"
+  | "dossier"
+  | "debate"
+  | "moderator"
+  | "summarizer"
+  | "sketch"
+  | "sketchJudge"
+  | "judge"
+  | "synthesis";
+
+export type ModelTierConfig = Record<ModelTier, string>;
+
+export type ModelAssignmentConfig = Record<ModelStage, ModelTier>;
+
+export interface CacheStats {
+  hits: number;
+  misses: number;
+  writes: number;
+}
+
+export interface CacheEntry<T> {
+  key: string;
+  kind: string;
+  value: T;
+  createdAt: string;
+  model?: string;
+  promptVersion?: string;
+  repoFingerprint?: string;
+  artifactHash?: string;
+}
+
 export interface CodexExecutionResult {
   threadId: string;
   success: boolean;
@@ -252,6 +383,30 @@ export interface CodexExecutionResult {
   output: string;
   durationMs: number;
   usage?: CodexUsage;
+}
+
+export interface LeafImplementationSketch {
+  leafId: string;
+  approach: string;
+  filesLikelyChanged: string[];
+  algorithmOrArchitecture: string[];
+  riskAreas: string[];
+  expectedTests: string[];
+  estimatedComplexity: "low" | "medium" | "high";
+  confidence: number;
+  rationale: string;
+}
+
+export interface LeafSketchScore {
+  leafId: string;
+  acceptanceCoverage: number;
+  verificationPlanQuality: number;
+  lowBlastRadius: number;
+  riskReduction: number;
+  complexityPenalty: number;
+  uncertaintyPenalty: number;
+  composite: number;
+  rationale: string;
 }
 
 export interface JudgeScore {
@@ -280,7 +435,11 @@ export interface TreeNode {
   branchLabel: string;
   branchDescription: string;
   humanIntervention?: HumanIntervention;
+  toolRequests?: ToolRequest[];
   executionResult?: CodexExecutionResult;
+  implementationSketch?: LeafImplementationSketch;
+  sketchScore?: LeafSketchScore;
+  skippedExecutionReason?: string;
   score?: JudgeScore;
   fitness?: FitnessScore;
   createdAt: string;
@@ -298,10 +457,16 @@ export interface RunConfig {
   llmApiKeyEnv?: string;
   reasoningModel: string;
   judgeModel: string;
+  modelTiers: ModelTierConfig;
+  modelAssignments: ModelAssignmentConfig;
   workingDirectory: string;
   phaseDepths: Record<TreePhase, [number, number]>;
   dryRun: boolean;
   interactivePlan: boolean;
+  toolUse: ToolUseConfig;
+  enableDeterministicCache: boolean;
+  enableSketchRanking: boolean;
+  sketchExecutionTopN: number;
   tokenBudget?: number;
   leafConcurrency: number;
   pruneThreshold: number;
@@ -329,6 +494,7 @@ export interface RunState {
   totalTokensUsed: number;
   llmUsage?: LLMUsage;
   codexUsageTotal?: CodexUsage;
+  cacheStats?: CacheStats;
   pendingHumanReview?: PendingHumanReview;
   status: "running" | "completed" | "failed" | "paused";
   runMode?: "implementation" | "exploration";
@@ -338,6 +504,7 @@ export interface RunState {
 export interface AgentInput {
   priorRoundsHistory: DebateMessage[];
   currentRoundSoFar: DebateMessage[];
+  compactDebateState?: CompactDebateState;
   context: NodeContext;
   phase: TreePhase;
   roundNumber: number;
@@ -352,6 +519,7 @@ export interface AgentOutput {
   }>;
   supportedAlternativeId?: string;
   contextUpdates?: Partial<NodeContext>;
+  toolRequests?: ParsedToolRequest[];
 }
 
 export interface ModeratorAssessment {

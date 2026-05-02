@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TOOL_NAMES } from "../types/index.js";
 
 export const AlternativeSchema = z.object({
   id: z.string(),
@@ -9,6 +10,32 @@ export const AlternativeSchema = z.object({
   rationale: z.string(),
   confidence: z.number().min(0).max(1).default(0.5),
   relevanceToIntent: z.number().min(0).max(1).default(0.5),
+});
+
+export const CompactDebateAlternativeSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  summary: z.string(),
+  supportingAgents: z.array(z.string()).default([]),
+  risks: z.array(z.string()).default([]),
+  verificationIdeas: z.array(z.string()).default([]),
+  confidence: z.number().min(0).max(1).default(0.5),
+  relevanceToIntent: z.number().min(0).max(1).default(0.5),
+});
+
+export const CompactDebateStateSchema = z.object({
+  acceptedFacts: z.array(z.string()).default([]),
+  lockedDecisions: z.array(z.string()).default([]),
+  liveAlternatives: z.array(CompactDebateAlternativeSchema).default([]),
+  killedAlternatives: z.array(z.object({ label: z.string(), reason: z.string() })).default([]),
+  unresolvedQuestions: z.array(z.string()).default([]),
+  risks: z.array(z.string()).default([]),
+  verificationIdeas: z.array(z.string()).default([]),
+  evidenceFindings: z.array(z.string()).default([]),
+  evidenceConstraints: z.array(z.string()).default([]),
+  evidenceRisks: z.array(z.string()).default([]),
+  evidenceOpenQuestions: z.array(z.string()).default([]),
+  lastRoundSummary: z.string().default(""),
 });
 
 export const IntentDecompositionSchema = z.object({
@@ -53,6 +80,65 @@ export const PruneSchedulePointSchema = z.object({
   threshold: z.number().min(0).max(1),
 });
 
+export const ToolNameSchema = z.enum(TOOL_NAMES);
+
+export const ToolUseConfigSchema = z.object({
+  enabled: z.boolean(),
+  allowlist: z.array(ToolNameSchema),
+  maxRequestsPerNode: z.number().int().min(0),
+  maxRequestsPerRound: z.number().int().min(0),
+  maxRequestsPerRun: z.number().int().min(0),
+  maxEvidenceItemsInPrompt: z.number().int().min(0),
+  autoRunReadOnly: z.boolean(),
+});
+
+export const ToolRequestSchema = z.object({
+  id: z.string().min(1),
+  toolName: ToolNameSchema,
+  query: z.string().min(1),
+  requestedBy: z.string(),
+  nodeId: z.string().min(1),
+  roundNumber: z.number().int().positive(),
+  status: z.enum(["pending", "running", "completed", "skipped", "failed"]),
+  reason: z.string().optional(),
+  createdAt: z.string(),
+  completedAt: z.string().optional(),
+});
+
+export const ParsedToolRequestSchema = z.object({
+  toolName: ToolNameSchema,
+  query: z.string().min(1),
+});
+
+export const ToolEvidenceSourceSchema = z.object({
+  title: z.string().optional(),
+  url: z.string().optional(),
+  path: z.string().optional(),
+  quote: z.string().optional(),
+  retrievedAt: z.string(),
+});
+
+export const ToolEvidenceSchema = z.object({
+  id: z.string().min(1),
+  requestId: z.string().min(1),
+  toolName: ToolNameSchema,
+  query: z.string().min(1),
+  requestedBy: z.string(),
+  additionalRequesters: z.array(z.string()).default([]),
+  nodeId: z.string().min(1),
+  roundNumber: z.number().int().positive(),
+  summary: z.string(),
+  findings: z.array(z.string()).default([]),
+  decisionRelevance: z.array(z.string()).default([]),
+  constraintsDiscovered: z.array(z.string()).default([]),
+  risksDiscovered: z.array(z.string()).default([]),
+  openQuestions: z.array(z.string()).default([]),
+  sources: z.array(ToolEvidenceSourceSchema).default([]),
+  limitations: z.array(z.string()).default([]),
+  confidence: z.number().min(0).max(1),
+  createdAt: z.string(),
+});
+
 export const ModeratorAssessmentSchema = z.object({
   outcome: z.enum(["consensus", "diverging", "continue"]),
   alternatives: z.array(AlternativeSchema).default([]),
@@ -69,6 +155,30 @@ export const JudgeScoreSchema = z.object({
   uncertainty: z.number().min(0).max(1).default(0.5),
   evidence: z.array(z.string()).default([]),
   failures: z.array(z.string()).default([]),
+  composite: z.number(),
+  rationale: z.string(),
+});
+
+export const LeafImplementationSketchSchema = z.object({
+  leafId: z.string(),
+  approach: z.string(),
+  filesLikelyChanged: z.array(z.string()).default([]),
+  algorithmOrArchitecture: z.array(z.string()).default([]),
+  riskAreas: z.array(z.string()).default([]),
+  expectedTests: z.array(z.string()).default([]),
+  estimatedComplexity: z.enum(["low", "medium", "high"]).default("medium"),
+  confidence: z.number().min(0).max(1).default(0.5),
+  rationale: z.string().default(""),
+});
+
+export const LeafSketchScoreSchema = z.object({
+  leafId: z.string(),
+  acceptanceCoverage: z.number().min(0).max(10),
+  verificationPlanQuality: z.number().min(0).max(10),
+  lowBlastRadius: z.number().min(0).max(10),
+  riskReduction: z.number().min(0).max(10),
+  complexityPenalty: z.number().min(0).max(10),
+  uncertaintyPenalty: z.number().min(0).max(10),
   composite: z.number(),
   rationale: z.string(),
 });

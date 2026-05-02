@@ -95,6 +95,31 @@ describe("TreeOrchestrator", () => {
     expect(state.rankedResults?.every((result) => result.fitness)).toBe(true);
   });
 
+  it("persists tool requests and evidence when tool use is enabled", async () => {
+    const openai = {} as OpenAI;
+    const orchestrator = new TreeOrchestrator(openai, {
+      dryRun: true,
+      maxDepth: 5,
+      maxDebateRounds: 1,
+      toolUse: {
+        enabled: true,
+        allowlist: ["docs-fetch"],
+        maxRequestsPerNode: 4,
+        maxRequestsPerRound: 2,
+        maxRequestsPerRun: 10,
+        maxEvidenceItemsInPrompt: 5,
+        autoRunReadOnly: true,
+      },
+    });
+
+    const state = await orchestrator.run("Build with tool research");
+    const nodes = collectNodes(state.root);
+    const nodeWithRequest = nodes.find((node) => (node.toolRequests ?? []).length > 0);
+
+    expect(nodeWithRequest?.toolRequests?.[0].toolName).toBe("docs-fetch");
+    expect(nodeWithRequest?.context.toolEvidence?.[0].summary).toContain("docs-fetch adapter");
+  });
+
   it("does not run verification commands during dry-run execution", async () => {
     const orchestrator = new TreeOrchestrator(
       {} as OpenAI,

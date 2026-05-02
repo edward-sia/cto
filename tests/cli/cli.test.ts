@@ -103,6 +103,22 @@ describe("CLI", () => {
     expect(output).toContain("--ui-review");
   });
 
+  it("documents tool-use flags", () => {
+    const output = execFileSync(
+      "npx",
+      ["tsx", "src/cli/index.ts", "run", "--help"],
+      {
+        cwd: process.cwd(),
+        encoding: "utf-8",
+        env: { ...process.env, FORCE_COLOR: "0" },
+        stdio: ["ignore", "pipe", "pipe"],
+      }
+    );
+
+    expect(output).toContain("--tools <tools>");
+    expect(output).toContain("--no-tools");
+  });
+
   it("uses provider-specific default models in dry-run mode", () => {
     const output = execFileSync(
       "npx",

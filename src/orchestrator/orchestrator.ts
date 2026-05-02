@@ -36,6 +36,8 @@ import { computeFitnessScore } from "../judge/fitness.js";
 import { Judge } from "../judge/judge.js";
 import { FileStore } from "../persistence/file-store.js";
 import { Synthesizer } from "../synthesis/synthesizer.js";
+import { defaultToolAdapters } from "../tools/adapters.js";
+import { ToolBroker } from "../tools/broker.js";
 import { VerificationRunner } from "../verification/runner.js";
 
 const DEFAULT_PHASE_DEPTHS: Record<TreePhase, [number, number]> = {
@@ -43,6 +45,16 @@ const DEFAULT_PHASE_DEPTHS: Record<TreePhase, [number, number]> = {
   architecture: [2, 3],
   implementation: [4, 5],
   validation: [6, 7],
+};
+
+export const DEFAULT_TOOL_USE_CONFIG: NonNullable<RunConfig["toolUse"]> = {
+  enabled: false,
+  allowlist: [],
+  maxRequestsPerNode: 6,
+  maxRequestsPerRound: 4,
+  maxRequestsPerRun: 30,
+  maxEvidenceItemsInPrompt: 8,
+  autoRunReadOnly: true,
 };
 
 export const DEFAULT_RUN_CONFIG: RunConfig = {
@@ -57,6 +69,7 @@ export const DEFAULT_RUN_CONFIG: RunConfig = {
   phaseDepths: DEFAULT_PHASE_DEPTHS,
   dryRun: false,
   interactivePlan: false,
+  toolUse: DEFAULT_TOOL_USE_CONFIG,
   leafConcurrency: 4,
   pruneThreshold: 0.5,
   verificationCommands: [],
@@ -105,6 +118,7 @@ export class TreeOrchestrator {
   private decomposer: IntentDecomposer;
   private dossierBuilder: IntentDossierBuilder;
   private synthesizer: Synthesizer;
+  private toolBroker?: ToolBroker;
   private callbacks: OrchestratorCallbacks;
   private runState!: RunState;
   private configOverrides: Partial<RunConfig>;
@@ -116,8 +130,9 @@ export class TreeOrchestrator {
   ) {
     this.openai = openai;
     this.configOverrides = config;
-    this.config = { ...DEFAULT_RUN_CONFIG, ...config };
+    this.config = this.normalizeConfig(config);
     this.store = new FileStore();
+    this.toolBroker = this.makeToolBroker();
     this.codex = new CodexExecutor(this.config.workingDirectory, this.config.dryRun, {
       cloudEnv: this.config.cloudEnv,
       cloudAttempts: this.config.cloudAttempts,
@@ -128,6 +143,26 @@ export class TreeOrchestrator {
     this.dossierBuilder = new IntentDossierBuilder(openai, this.config.reasoningModel, this.config.dryRun);
     this.synthesizer = new Synthesizer(openai, this.config.reasoningModel, this.config.dryRun);
     this.callbacks = callbacks;
+  }
+
+  private normalizeConfig(config: Partial<RunConfig>): RunConfig {
+    return {
+      ...DEFAULT_RUN_CONFIG,
+      ...config,
+      toolUse: {
+        ...DEFAULT_TOOL_USE_CONFIG,
+        ...config.toolUse,
+      },
+    };
+  }
+
+  private makeToolBroker(): ToolBroker | undefined {
+    return this.config.toolUse?.enabled
+      ? new ToolBroker({
+        config: this.config.toolUse,
+        adapters: defaultToolAdapters(this.config.workingDirectory),
+      })
+      : undefined;
   }
 
   async run(intent: string, domainFacts?: DomainFacts): Promise<RunState> {
@@ -201,8 +236,9 @@ export class TreeOrchestrator {
     const state = await this.store.load(runId);
     if (!state) throw new Error(`Run ${runId} not found`);
     this.runState = state;
-    this.config = { ...DEFAULT_RUN_CONFIG, ...state.config, ...this.configOverrides };
+    this.config = this.normalizeConfig({ ...state.config, ...this.configOverrides });
     this.runState.config = this.config;
+    this.toolBroker = this.makeToolBroker();
 
     const pendingNodes = this.findPendingNodes(state.root);
     for (const node of pendingNodes) {
@@ -318,10 +354,18 @@ export class TreeOrchestrator {
       maxBranching: this.config.maxBranching,
       dryRun: this.config.dryRun,
       onProgress: (event) => this.callbacks.onDebateProgress?.(node.id, event),
+      nodeId: node.id,
+      toolBroker: this.toolBroker,
     });
 
     const transcript = await debateEngine.runDebate(phase, node.context, agents);
     node.debate = transcript;
+    if (transcript.toolRequests?.length) {
+      node.toolRequests = [...(node.toolRequests ?? []), ...transcript.toolRequests];
+    }
+    if (transcript.contextUpdates.toolEvidence?.length) {
+      node.context.toolEvidence = transcript.contextUpdates.toolEvidence;
+    }
     this.runState.totalTokensUsed += transcript.tokenUsage;
     this.accumulateLLMUsage(transcript.llmUsage);
 

@@ -17,7 +17,7 @@ import chalk from "chalk";
 import ora from "ora";
 import { createInterface } from "node:readline/promises";
 import { HumanReviewStore } from "../control/human-review-store.js";
-import { TreeOrchestrator, DEFAULT_RUN_CONFIG } from "../orchestrator/orchestrator.js";
+import { TreeOrchestrator, DEFAULT_RUN_CONFIG, DEFAULT_TOOL_USE_CONFIG } from "../orchestrator/orchestrator.js";
 import { FileStore } from "../persistence/file-store.js";
 import type { HumanPlanDecision, PruneSchedulePoint, RunState, TreeNode, RunConfig } from "../types/index.js";
 import { AGENT_DISPLAY_NAMES } from "../types/index.js";
@@ -35,6 +35,7 @@ import { parsePruneSchedule } from "../utils/pruning.js";
 import { loadGroundTruth } from "../ground-truth/provider.js";
 import type { DomainFacts } from "../ground-truth/types.js";
 import type { DebateProgressEvent } from "../debate/engine.js";
+import { TOOL_NAMES } from "../types/index.js";
 
 const program = new Command();
 
@@ -46,6 +47,18 @@ function parsePositiveInteger(value: string): number | undefined {
   if (!/^\d+$/.test(value)) return undefined;
   const parsed = Number(value);
   return parsed > 0 ? parsed : undefined;
+}
+
+function parseToolAllowlist(value: string): NonNullable<RunConfig["toolUse"]>["allowlist"] {
+  const requested = value.split(",").map((item) => item.trim()).filter(Boolean);
+  if (requested.includes("all-readonly")) {
+    return [...TOOL_NAMES];
+  }
+
+  const valid = new Set<string>(TOOL_NAMES);
+  const invalid = requested.filter((item) => !valid.has(item));
+  if (invalid.length > 0) throw new Error(`Unknown tool(s): ${invalid.join(", ")}`);
+  return requested as NonNullable<RunConfig["toolUse"]>["allowlist"];
 }
 
 program
@@ -78,6 +91,8 @@ program
   .option("--dry-run", "Skip all LLM and Codex calls — exercise tree shape only", false)
   .option("--ground-truth <spec>", "Inject verified domain facts (e.g. file:./facts.json, sample:./data.csv, openapi:./spec.yaml)")
   .option("--interactive-plan", "Review candidate leaves before implementation", false)
+  .option("--tools <tools>", "Enable read-only research tools (comma-separated or all-readonly)")
+  .option("--no-tools", "Disable agent-requested research tools")
   .option("--monitor", "Launch the live browser monitor while the run is active", false)
   .option("--ui-review", "Use the browser UI for interactive plan decisions", false)
   .option("-y, --yes", "Skip pre-run cost confirmation", false)
@@ -100,6 +115,17 @@ program
     const parsedLeafConcurrency = parseInt(opts.leafConcurrency, 10);
     const parsedPruneThreshold = parseFloat(opts.pruneThreshold);
     const parsedVerifyTimeout = parsePositiveInteger(opts.verifyTimeout);
+    let toolAllowlist: NonNullable<RunConfig["toolUse"]>["allowlist"] = [];
+    let toolUseEnabled = false;
+    if (typeof opts.tools === "string") {
+      try {
+        toolAllowlist = parseToolAllowlist(opts.tools);
+        toolUseEnabled = true;
+      } catch (err) {
+        console.error(chalk.red(`Error: ${err instanceof Error ? err.message : String(err)}`));
+        process.exit(1);
+      }
+    }
 
     const numericErrors: string[] = [];
     if (isNaN(parsedDepth)) numericErrors.push(`--depth: "${opts.depth}" is not a number (tip: use -d 2, not -d=2)`);
@@ -148,6 +174,11 @@ program
         required: true,
         timeoutMs: verificationTimeoutMs,
       })),
+      toolUse: {
+        ...DEFAULT_TOOL_USE_CONFIG,
+        enabled: toolUseEnabled,
+        allowlist: toolAllowlist,
+      },
       cloudEnv: opts.cloudEnv,
       cloudAttempts: opts.cloudAttempts ? parseInt(opts.cloudAttempts, 10) : undefined,
     };
@@ -269,6 +300,7 @@ program
     console.log(chalk.dim(`Config: depth=${opts.depth}, branching=${opts.branching}, rounds=${opts.rounds}, provider=${llmProvider}, model=${model}, leaf-concurrency=${opts.leafConcurrency}, prune-threshold=${opts.pruneThreshold}`));
     console.log(chalk.dim(`LLM: ${providerLabel(fullConfig)}`));
     console.log(chalk.dim(`Working dir: ${opts.workdir}`));
+    if (config.toolUse?.enabled) console.log(chalk.cyan(`Tools: ${config.toolUse.allowlist.join(", ")}`));
     if (opts.cloudEnv) console.log(chalk.cyan(`Codex Cloud: env=${opts.cloudEnv}, attempts=${opts.cloudAttempts ?? 1}`));
     if (dryRun) console.log(chalk.yellow("Mode: DRY RUN — no LLM or Codex calls will be made"));
     if (opts.interactivePlan || useUiReview) console.log(chalk.yellow(`Interactive plan gate: enabled${useUiReview ? " (browser review)" : ""}`));
@@ -389,6 +421,8 @@ program
   .option("--dry-run", "Skip all LLM and Codex calls", false)
   .option("--leaf-concurrency <n>", "Override max parallel leaf executions on resume")
   .option("--interactive-plan", "Enable interactive plan review on resume")
+  .option("--tools <tools>", "Enable read-only research tools (comma-separated or all-readonly)")
+  .option("--no-tools", "Disable agent-requested research tools")
   .option("--monitor", "Launch the live browser monitor while the run resumes", false)
   .option("--ui-review", "Use the browser UI for interactive plan decisions", false)
   .action(async (runId: string, opts) => {
@@ -415,6 +449,28 @@ program
     const useUiReview = Boolean(opts.uiReview);
     const launchMonitor = Boolean(opts.monitor) || useUiReview;
     const humanReviewStore = new HumanReviewStore();
+    let toolUseOverride: Pick<RunConfig, "toolUse"> | Record<string, never> = {};
+    if (typeof opts.tools === "string") {
+      try {
+        toolUseOverride = {
+          toolUse: {
+            ...DEFAULT_TOOL_USE_CONFIG,
+            enabled: true,
+            allowlist: parseToolAllowlist(opts.tools),
+          },
+        };
+      } catch (err) {
+        console.error(chalk.red(`Error: ${err instanceof Error ? err.message : String(err)}`));
+        process.exit(1);
+      }
+    } else if (opts.tools === false) {
+      toolUseOverride = {
+        toolUse: {
+          ...(savedRun.config.toolUse ?? DEFAULT_TOOL_USE_CONFIG),
+          enabled: false,
+        },
+      };
+    }
     const monitorServer = launchMonitor
       ? await startUiServer({ runId, openBrowser: true })
       : undefined;
@@ -430,6 +486,7 @@ program
       judgeModel: model,
       ...(opts.leafConcurrency ? { leafConcurrency: parseInt(opts.leafConcurrency, 10) } : {}),
       ...(opts.interactivePlan || useUiReview ? { interactivePlan: true } : {}),
+      ...toolUseOverride,
     }, {
       onDebateProgress: (nodeId, event) => {
         printDebateProgress(nodeId, event, spinner);
@@ -444,6 +501,9 @@ program
     });
     console.log(chalk.blue(`\nResuming run ${runId}...\n`));
     console.log(chalk.dim(`LLM: ${providerLabel({ llmProvider, llmBaseURL, llmApiKeyEnv })}, model=${model}`));
+    if ("toolUse" in toolUseOverride && toolUseOverride.toolUse?.enabled) {
+      console.log(chalk.cyan(`Tools: ${toolUseOverride.toolUse.allowlist.join(", ")}`));
+    }
     try {
       const state = await orchestrator.resume(runId);
       printResults(state);
@@ -567,6 +627,11 @@ function printDebateProgress(
         console.log(chalk.bold(`${AGENT_DISPLAY_NAMES[event.agent]}:`));
         console.log(event.message);
       });
+      break;
+    case "tools_resolved":
+      if (spinner) {
+        spinner.text = chalk.blue(`Resolved tools: ${event.completed} completed, ${event.skipped} skipped, ${event.failed} failed`);
+      }
       break;
     case "moderator_assessment":
       withPausedSpinner(spinner, () => {

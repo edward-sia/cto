@@ -149,6 +149,184 @@ describe("DebateEngine compact state", () => {
 });
 
 describe("DebateEngine tool integration", () => {
+  it("preloads repo-map evidence for codebase structure research before content search", async () => {
+    const calls: IncomingToolRequest[][] = [];
+    const fakeBroker: Pick<ToolBroker, "resolveRoundRequests"> = {
+      async resolveRoundRequests(input) {
+        calls.push(input.requests);
+        return {
+          requests: [
+            {
+              id: `request-${input.requests[0].toolName}`,
+              toolName: input.requests[0].toolName,
+              query: input.requests[0].query,
+              requestedBy: "researcher",
+              nodeId: input.nodeId,
+              roundNumber: input.roundNumber,
+              status: "completed",
+              createdAt: "2026-05-02T00:00:00.000Z",
+              completedAt: "2026-05-02T00:00:01.000Z",
+            },
+          ],
+          evidence: [
+            {
+              id: `evidence-${input.requests[0].toolName}`,
+              requestId: `request-${input.requests[0].toolName}`,
+              toolName: input.requests[0].toolName,
+              query: input.requests[0].query,
+              requestedBy: "researcher",
+              additionalRequesters: [],
+              nodeId: input.nodeId,
+              roundNumber: input.roundNumber,
+              summary: "Mapped repository structure.",
+              findings: ["Top-level directory: src/", "Root file: package.json"],
+              decisionRelevance: ["Use repository map as the structure baseline."],
+              constraintsDiscovered: [],
+              risksDiscovered: [],
+              openQuestions: [],
+              sources: [{ path: "package.json", retrievedAt: "2026-05-02T00:00:00.000Z" }],
+              limitations: [],
+              confidence: 0.8,
+              createdAt: "2026-05-02T00:00:01.000Z",
+            },
+          ],
+        };
+      },
+    };
+
+    const engine = new DebateEngine({
+      openai: {} as OpenAI,
+      reasoningModel: "test-model",
+      maxDebateRounds: 1,
+      maxBranching: 2,
+      dryRun: true,
+      nodeId: "node-structure",
+      toolBroker: fakeBroker,
+      enabledTools: ["repo-map", "repo-search", "repo-read"],
+    });
+
+    const transcript = await engine.runDebate(
+      "requirements",
+      {
+        originalIntent: "How is the codebase structured here",
+        repositoryContext: {
+          workingDirectory: "/Users/esia/repos/codex-tree-orchestrator",
+        },
+        ancestorSummaries: [],
+      },
+      ["researcher"]
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual([
+      {
+        toolName: "repo-map",
+        query: "structure",
+        requestedBy: "researcher",
+      },
+    ]);
+    expect(transcript.toolRequests?.[0]).toMatchObject({
+      toolName: "repo-map",
+      status: "completed",
+    });
+    expect(transcript.contextUpdates.toolEvidence?.[0].findings).toContain("Top-level directory: src/");
+  });
+
+  it("preloads repo-search evidence for codebase research before agents speak", async () => {
+    const calls: IncomingToolRequest[][] = [];
+    const fakeBroker: Pick<ToolBroker, "resolveRoundRequests"> = {
+      async resolveRoundRequests(input) {
+        calls.push(input.requests);
+        const toolName = input.requests[0].toolName;
+        return {
+          requests: [
+            {
+              id: "request-1",
+              toolName,
+              query: input.requests[0].query,
+              requestedBy: "researcher",
+              nodeId: input.nodeId,
+              roundNumber: input.roundNumber,
+              status: "completed",
+              createdAt: "2026-05-02T00:00:00.000Z",
+              completedAt: "2026-05-02T00:00:01.000Z",
+            },
+          ],
+          evidence: [
+            {
+              id: `evidence-${toolName}`,
+              requestId: "request-1",
+              toolName,
+              query: input.requests[0].query,
+              requestedBy: "researcher",
+              additionalRequesters: [],
+              nodeId: input.nodeId,
+              roundNumber: input.roundNumber,
+              summary: toolName === "repo-search" ? "Found CLI files in src/cli/index.ts." : "Read src/cli/index.ts.",
+              findings: [toolName === "repo-search" ? "src/cli/index.ts:1:import { Command } from commander;" : "src/cli/index.ts:1:import { Command } from commander;"],
+              decisionRelevance: ["Use the local CLI entry point as evidence."],
+              constraintsDiscovered: [],
+              risksDiscovered: [],
+              openQuestions: [],
+              sources: [{ path: "src/cli/index.ts", retrievedAt: "2026-05-02T00:00:00.000Z" }],
+              limitations: [],
+              confidence: 0.75,
+              createdAt: "2026-05-02T00:00:01.000Z",
+            },
+          ],
+        };
+      },
+    };
+
+    const engine = new DebateEngine({
+      openai: {} as OpenAI,
+      reasoningModel: "test-model",
+      maxDebateRounds: 1,
+      maxBranching: 2,
+      dryRun: true,
+      nodeId: "node-tools",
+      toolBroker: fakeBroker,
+      enabledTools: ["repo-search", "repo-read"],
+    });
+
+    const transcript = await engine.runDebate(
+      "requirements",
+      {
+        originalIntent: "Help me research cli in the codebase using tool use",
+        repositoryContext: {
+          workingDirectory: "/Users/esia/repos/codex-tree-orchestrator",
+        },
+        ancestorSummaries: [],
+      },
+      ["researcher"]
+    );
+
+    expect(calls[0]).toEqual([
+      {
+        toolName: "repo-search",
+        query: "cli",
+        requestedBy: "researcher",
+      },
+    ]);
+    expect(calls[1]).toEqual([
+      {
+        toolName: "repo-read",
+        query: "src/cli/index.ts",
+        requestedBy: "researcher",
+      },
+    ]);
+    expect(transcript.toolRequests?.[0]).toMatchObject({
+      toolName: "repo-search",
+      status: "completed",
+    });
+    expect(transcript.toolRequests?.[1]).toMatchObject({
+      toolName: "repo-read",
+      status: "completed",
+    });
+    expect(transcript.contextUpdates.toolEvidence?.[0].summary).toContain("Found CLI files");
+    expect(transcript.contextUpdates.toolEvidence?.[1].summary).toContain("Read src/cli/index.ts");
+  });
+
   it("resolves tool requests before moderator assessment and renders evidence in the moderator prompt", async () => {
     const calls: IncomingToolRequest[][] = [];
     const events: string[] = [];

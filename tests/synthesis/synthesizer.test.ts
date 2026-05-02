@@ -106,6 +106,55 @@ describe("Synthesizer", () => {
     expect(userPrompt).toContain("Redis vs Memcached");
   });
 
+  it("includes structured tool evidence in the synthesis prompt", async () => {
+    const mockCreate = vi.fn().mockResolvedValue({
+      choices: [{ message: { content: "# Synthesis" } }],
+      usage: { total_tokens: 100 },
+    });
+    const openai = {
+      chat: { completions: { create: mockCreate } },
+    } as unknown as OpenAI;
+    const synthesizer = new Synthesizer(openai, "gpt-4o", false);
+
+    await synthesizer.synthesize(
+      makeLeafNode({
+        context: {
+          originalIntent: "How is the codebase structured here",
+          ancestorSummaries: [],
+          toolEvidence: [
+            {
+              id: "evidence-repo-map",
+              requestId: "request-repo-map",
+              toolName: "repo-map",
+              query: "structure",
+              requestedBy: "researcher",
+              additionalRequesters: [],
+              nodeId: "node-1",
+              roundNumber: 0,
+              summary: "Mapped repository structure.",
+              findings: ["Top-level directory: src/", "Root file: package.json"],
+              decisionRelevance: ["Use repository map as the structure baseline."],
+              constraintsDiscovered: [],
+              risksDiscovered: [],
+              openQuestions: [],
+              sources: [{ path: "package.json", retrievedAt: "2026-05-02T00:00:00.000Z" }],
+              limitations: ["Directory map limited to top-level entries."],
+              confidence: 0.8,
+              createdAt: "2026-05-02T00:00:00.000Z",
+            },
+          ],
+        },
+      })
+    );
+
+    const callArgs = mockCreate.mock.calls[0][0];
+    const userPrompt = callArgs.messages[1].content as string;
+    expect(userPrompt).toContain("## Tool Evidence");
+    expect(userPrompt).toContain("Mapped repository structure.");
+    expect(userPrompt).toContain("Top-level directory: src/");
+    expect(userPrompt).toContain("Source: package.json");
+  });
+
   it("includes a human revision prompt in the synthesis prompt", async () => {
     const mockCreate = vi.fn().mockResolvedValue({
       choices: [{ message: { content: "# Synthesis" } }],

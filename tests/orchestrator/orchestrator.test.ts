@@ -120,6 +120,21 @@ describe("TreeOrchestrator", () => {
     expect(nodeWithRequest?.context.toolEvidence?.[0].summary).toContain("docs-fetch adapter");
   });
 
+  it("stores the current working directory in root repository context", async () => {
+    const orchestrator = new TreeOrchestrator({} as OpenAI, {
+      dryRun: true,
+      maxDepth: 1,
+      maxDebateRounds: 1,
+      workingDirectory: "/Users/esia/repos/codex-tree-orchestrator",
+    });
+
+    const state = await orchestrator.run("Help me research cli in the codebase using tool use");
+
+    expect(state.root.context.repositoryContext).toEqual({
+      workingDirectory: "/Users/esia/repos/codex-tree-orchestrator",
+    });
+  });
+
   it("enforces the tool request budget across the whole run", async () => {
     const orchestrator = new TreeOrchestrator({} as OpenAI, {
       dryRun: true,

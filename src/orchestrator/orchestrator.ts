@@ -178,6 +178,9 @@ export class TreeOrchestrator {
       intentDecomposition: decomposition,
       intentDossier: dossier,
       domainFacts,
+      repositoryContext: {
+        workingDirectory: this.config.workingDirectory,
+      },
       ancestorSummaries: [],
     });
 
@@ -362,6 +365,7 @@ export class TreeOrchestrator {
       toolBroker: this.toolBroker,
       initialRunToolRequestCount: this.countBudgetedToolRequests(this.runState.root),
       toolEvidencePromptLimit: this.config.toolUse?.maxEvidenceItemsInPrompt,
+      enabledTools: this.config.toolUse?.enabled ? this.config.toolUse.allowlist : [],
     });
 
     const transcript = await debateEngine.runDebate(phase, node.context, agents);

@@ -170,6 +170,10 @@ Personas may request read-only tools using `TOOL_REQUEST [tool-name]: query` in 
 
 Tool evidence is rendered as compact decision-grade context: findings, decision relevance, discovered constraints, risks, open questions, sources, limitations, and confidence. The full structured evidence remains in saved run state and the saved-run UI.
 
+The local `repo-map` adapter provides structure-first evidence for repository overview questions by listing root files, top-level directories, and representative files. Debate preflight prefers `repo-map` for codebase-structure intents when the tool is allowlisted, avoiding incidental content matches for generic terms like `codebase`.
+
+The local `repo-search` adapter uses a backend stack: ripgrep first, Git-tracked files second, and a filesystem walk with generated-directory excludes last. Missing ripgrep is recorded as a degraded limitation, not a fatal research failure, so agents still receive repository evidence when the process `PATH` differs from an interactive shell. `CTO_RIPGREP_PATH` can pin a specific ripgrep binary.
+
 ## Interactive Plan Gate
 
 `--interactive-plan` adds a human checkpoint after debate traversal produces candidate leaves and before execution or synthesis begins. It is intentionally terminal-first and does not require saved-run UI changes.

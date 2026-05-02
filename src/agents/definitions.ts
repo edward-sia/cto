@@ -987,6 +987,19 @@ ${decomp.feasibilityFlags.map((f) => `- ${f}`).join("\n") || "- (none)"}`
   const domainFactsSection = input.context.domainFacts
     ? renderDomainFacts(input.context.domainFacts)
     : "";
+  const repositoryContextSection = input.context.repositoryContext
+    ? `## Repository Context
+Current repository root: ${input.context.repositoryContext.workingDirectory}`
+    : "";
+  const enabledToolsSection = input.enabledTools?.length
+    ? `## Enabled Research Tools
+${input.enabledTools.map((tool) => `- ${tool}`).join("\n")}`
+    : "";
+  const codebaseToolGuidance =
+    input.context.repositoryContext && (input.enabledTools?.includes("repo-map") || input.enabledTools?.includes("repo-search"))
+      ? `## Codebase Research Tool Guidance
+For codebase or repository structure research, request \`repo-map\` when available. For targeted code references, request \`repo-search\` before concluding that the codebase is unknown. Use \`repo-read\` after repo-search identifies a specific file path that needs closer inspection.`
+      : "";
   const toolEvidenceSection = renderToolEvidenceForPrompt(
     input.context.toolEvidence,
     input.toolEvidencePromptLimit ?? DEFAULT_TOOL_EVIDENCE_PROMPT_LIMIT
@@ -994,6 +1007,9 @@ ${decomp.feasibilityFlags.map((f) => `- ${f}`).join("\n") || "- (none)"}`
 
   const contextSummary = [
     `## Original Intent\n${input.context.originalIntent}`,
+    repositoryContextSection,
+    enabledToolsSection,
+    codebaseToolGuidance,
     input.context.humanRevisionPrompt
       ? `## Human Revision\nThe human reviewer added this steering instruction before implementation:\n${input.context.humanRevisionPrompt}`
       : "",

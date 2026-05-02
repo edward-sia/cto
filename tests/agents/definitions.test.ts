@@ -125,6 +125,30 @@ describe("buildAgentPrompt", () => {
     expect(user).toContain("buildAgentPrompt renders context sections.");
   });
 
+  it("renders repository context and enabled local research tools", () => {
+    const { user } = buildAgentPrompt(AGENT_DEFINITIONS["researcher"], {
+      priorRoundsHistory: [],
+      currentRoundSoFar: [],
+      enabledTools: ["repo-search", "repo-read", "package-info"],
+      phase: "requirements",
+      roundNumber: 1,
+      context: {
+        originalIntent: "Help me research cli in the codebase using tool use",
+        repositoryContext: {
+          workingDirectory: "/Users/esia/repos/codex-tree-orchestrator",
+        },
+        ancestorSummaries: [],
+      },
+    });
+
+    expect(user).toContain("## Repository Context");
+    expect(user).toContain("/Users/esia/repos/codex-tree-orchestrator");
+    expect(user).toContain("## Enabled Research Tools");
+    expect(user).toContain("repo-search");
+    expect(user).toContain("repo-read");
+    expect(user).toContain("For targeted code references, request `repo-search`");
+  });
+
   it("caps rendered tool evidence to the most recent items", () => {
     const toolEvidence: ToolEvidence[] = Array.from({ length: 3 }, (_, index) => ({
       id: `evidence-${index + 1}`,

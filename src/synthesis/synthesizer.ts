@@ -69,6 +69,9 @@ export class Synthesizer {
     if (context.testStrategy) {
       sections.push(`## Test Strategy\n${context.testStrategy}`);
     }
+    if (context.toolEvidence?.length) {
+      sections.push(`## Tool Evidence\n${renderToolEvidence(context.toolEvidence)}`);
+    }
     if (context.ancestorSummaries.length) {
       sections.push(
         `## Prior Discussion\n${context.ancestorSummaries.map((s, i) => `### Level ${i}\n${s}`).join("\n")}`
@@ -107,4 +110,26 @@ export class Synthesizer {
       };
     }
   }
+}
+
+function renderToolEvidence(evidence: NonNullable<TreeNode["context"]["toolEvidence"]>): string {
+  return evidence
+    .slice(-8)
+    .map((item) => {
+      const findings = item.findings.slice(0, 8).map((finding) => `- ${finding}`).join("\n");
+      const sources = item.sources.slice(0, 5).map((source) => {
+        const label = source.path ?? source.url ?? source.title ?? "unknown source";
+        return `- Source: ${label}${source.quote ? ` — ${source.quote}` : ""}`;
+      }).join("\n");
+      const limitations = item.limitations.slice(0, 4).map((limitation) => `- ${limitation}`).join("\n");
+      return [
+        `### ${item.toolName}: ${item.query}`,
+        `Summary: ${item.summary}`,
+        findings ? `Findings:\n${findings}` : "",
+        sources ? `Sources:\n${sources}` : "",
+        limitations ? `Limitations:\n${limitations}` : "",
+        `Confidence: ${item.confidence}`,
+      ].filter(Boolean).join("\n");
+    })
+    .join("\n\n");
 }

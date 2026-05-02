@@ -242,6 +242,7 @@ export const TOOL_NAMES = [
   "web-search",
   "web-fetch",
   "docs-fetch",
+  "repo-map",
   "repo-search",
   "repo-read",
   "package-info",
@@ -311,6 +312,9 @@ export interface NodeContext {
   intentDecomposition?: IntentDecomposition;
   intentDossier?: IntentDossier;
   domainFacts?: DomainFacts;
+  repositoryContext?: {
+    workingDirectory: string;
+  };
   toolEvidence?: ToolEvidence[];
   prd?: string;
   acceptanceCriteria?: string[];
@@ -507,6 +511,7 @@ export interface AgentInput {
   currentRoundSoFar: DebateMessage[];
   compactDebateState?: CompactDebateState;
   toolEvidencePromptLimit?: number;
+  enabledTools?: ToolName[];
   context: NodeContext;
   phase: TreePhase;
   roundNumber: number;

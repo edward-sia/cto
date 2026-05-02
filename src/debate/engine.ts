@@ -19,6 +19,7 @@ import type {
   TreePhase,
   CompactDebateState,
   ToolRequest,
+  ToolName,
 } from "../types/index.js";
 import {
   AGENT_DEFINITIONS,
@@ -255,6 +256,28 @@ function countBudgetedToolRequests(requests: ToolRequest[]): number {
   ).length;
 }
 
+function repoSearchQuery(context: NodeContext): string {
+  const cliTerm = context.originalIntent.match(/\bcli\b/i)?.[0];
+  if (isCodebaseStructureIntent(context)) return "package.json";
+  return (cliTerm ?? context.intentDecomposition?.undefinedTerms[0]?.term ?? "codebase").toLowerCase();
+}
+
+function isCodebaseStructureIntent(context: NodeContext): boolean {
+  return (
+    /\b(codebase|repo|repository|current code|local code)\b/i.test(context.originalIntent) &&
+    /\b(structure|structured|map|overview|organized|organisation|organization|layout)\b/i.test(context.originalIntent)
+  );
+}
+
+function firstEvidencePath(evidence: NonNullable<NodeContext["toolEvidence"]>): string | undefined {
+  for (const item of evidence) {
+    for (const source of item.sources) {
+      if (source.path) return source.path;
+    }
+  }
+  return undefined;
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface DebateEngineConfig {
@@ -269,6 +292,7 @@ export interface DebateEngineConfig {
   toolBroker?: Pick<ToolBroker, "resolveRoundRequests">;
   initialRunToolRequestCount?: number;
   toolEvidencePromptLimit?: number;
+  enabledTools?: ToolName[];
 }
 
 export type DebateProgressEvent =
@@ -295,6 +319,7 @@ export class DebateEngine {
   private toolBroker?: Pick<ToolBroker, "resolveRoundRequests">;
   private initialRunToolRequestCount: number;
   private toolEvidencePromptLimit: number;
+  private enabledTools: ToolName[];
 
   constructor(config: DebateEngineConfig) {
     this.openai = config.openai;
@@ -308,6 +333,7 @@ export class DebateEngine {
     this.toolBroker = config.toolBroker;
     this.initialRunToolRequestCount = config.initialRunToolRequestCount ?? 0;
     this.toolEvidencePromptLimit = config.toolEvidencePromptLimit ?? DEFAULT_TOOL_EVIDENCE_PROMPT_LIMIT;
+    this.enabledTools = config.enabledTools ?? [];
   }
 
   async runDebate(
@@ -321,6 +347,119 @@ export class DebateEngine {
     const accumulatedContextUpdates: Partial<NodeContext> = {};
     const accumulatedToolRequests: ToolRequest[] = [];
     let compactState = initialCompactState(context, this.toolEvidencePromptLimit);
+
+    if (this.shouldPreloadRepoMap(context, participatingAgents)) {
+      const resolved = await this.toolBroker!.resolveRoundRequests({
+        nodeId: this.nodeId,
+        roundNumber: 0,
+        requests: [
+          {
+            toolName: "repo-map",
+            query: "structure",
+            requestedBy: participatingAgents[0],
+          },
+        ],
+        existingRequests: accumulatedToolRequests,
+        existingEvidence: context.toolEvidence ?? [],
+        runRequestCount: this.initialRunToolRequestCount,
+        nodeRequestCount: 0,
+      });
+      accumulatedToolRequests.push(...resolved.requests);
+      if (resolved.evidence.length > 0) {
+        context = {
+          ...context,
+          toolEvidence: [...(context.toolEvidence ?? []), ...resolved.evidence],
+        };
+        mergeContextUpdates(accumulatedContextUpdates, { toolEvidence: context.toolEvidence });
+        compactState = {
+          ...compactState,
+          ...rollupToolEvidence(context.toolEvidence, this.toolEvidencePromptLimit),
+        };
+      }
+      this.onProgress?.({
+        type: "tools_resolved",
+        round: 0,
+        requested: resolved.requests.length,
+        completed: resolved.requests.filter((request) => request.status === "completed").length,
+        skipped: resolved.requests.filter((request) => request.status === "skipped").length,
+        failed: resolved.requests.filter((request) => request.status === "failed").length,
+      });
+    } else if (this.shouldPreloadRepoSearch(context, participatingAgents)) {
+      const resolved = await this.toolBroker!.resolveRoundRequests({
+        nodeId: this.nodeId,
+        roundNumber: 0,
+        requests: [
+          {
+            toolName: "repo-search",
+            query: repoSearchQuery(context),
+            requestedBy: participatingAgents[0],
+          },
+        ],
+        existingRequests: accumulatedToolRequests,
+        existingEvidence: context.toolEvidence ?? [],
+        runRequestCount: this.initialRunToolRequestCount,
+        nodeRequestCount: 0,
+      });
+      accumulatedToolRequests.push(...resolved.requests);
+      if (resolved.evidence.length > 0) {
+        context = {
+          ...context,
+          toolEvidence: [...(context.toolEvidence ?? []), ...resolved.evidence],
+        };
+        mergeContextUpdates(accumulatedContextUpdates, { toolEvidence: context.toolEvidence });
+        compactState = {
+          ...compactState,
+          ...rollupToolEvidence(context.toolEvidence, this.toolEvidencePromptLimit),
+        };
+      }
+      this.onProgress?.({
+        type: "tools_resolved",
+        round: 0,
+        requested: resolved.requests.length,
+        completed: resolved.requests.filter((request) => request.status === "completed").length,
+        skipped: resolved.requests.filter((request) => request.status === "skipped").length,
+        failed: resolved.requests.filter((request) => request.status === "failed").length,
+      });
+
+      const firstMatchedPath = firstEvidencePath(resolved.evidence);
+      if (firstMatchedPath && this.enabledTools.includes("repo-read")) {
+        const readResolved = await this.toolBroker!.resolveRoundRequests({
+          nodeId: this.nodeId,
+          roundNumber: 0,
+          requests: [
+            {
+              toolName: "repo-read",
+              query: firstMatchedPath,
+              requestedBy: participatingAgents[0],
+            },
+          ],
+          existingRequests: accumulatedToolRequests,
+          existingEvidence: context.toolEvidence ?? [],
+          runRequestCount: this.initialRunToolRequestCount + countBudgetedToolRequests(accumulatedToolRequests),
+          nodeRequestCount: countBudgetedToolRequests(accumulatedToolRequests),
+        });
+        accumulatedToolRequests.push(...readResolved.requests);
+        if (readResolved.evidence.length > 0) {
+          context = {
+            ...context,
+            toolEvidence: [...(context.toolEvidence ?? []), ...readResolved.evidence],
+          };
+          mergeContextUpdates(accumulatedContextUpdates, { toolEvidence: context.toolEvidence });
+          compactState = {
+            ...compactState,
+            ...rollupToolEvidence(context.toolEvidence, this.toolEvidencePromptLimit),
+          };
+        }
+        this.onProgress?.({
+          type: "tools_resolved",
+          round: 0,
+          requested: readResolved.requests.length,
+          completed: readResolved.requests.filter((request) => request.status === "completed").length,
+          skipped: readResolved.requests.filter((request) => request.status === "skipped").length,
+          failed: readResolved.requests.filter((request) => request.status === "failed").length,
+        });
+      }
+    }
 
     for (let roundNum = 1; roundNum <= this.maxRounds; roundNum++) {
       this.onProgress?.({ type: "round_start", round: roundNum, totalRounds: this.maxRounds });
@@ -338,6 +477,7 @@ export class DebateEngine {
           currentRoundSoFar: [...roundMessages],
           compactDebateState: roundNum > 1 ? compactState : undefined,
           toolEvidencePromptLimit: this.toolEvidencePromptLimit,
+          enabledTools: this.enabledTools,
           context,
           phase,
           roundNumber: roundNum,
@@ -577,6 +717,29 @@ ${isLastRound ? "\n⚠️ THIS IS THE FINAL ROUND. You MUST choose consensus or 
 
   get llmUsage(): LLMUsage {
     return { ...this.usage };
+  }
+
+  private shouldPreloadRepoSearch(context: NodeContext, participatingAgents: AgentRole[]): boolean {
+    return Boolean(
+      this.toolBroker &&
+        participatingAgents.length > 0 &&
+        context.repositoryContext &&
+        this.enabledTools.includes("repo-search") &&
+        !context.toolEvidence?.some((item) => item.toolName === "repo-search") &&
+        !(isCodebaseStructureIntent(context) && context.toolEvidence?.some((item) => item.toolName === "repo-map")) &&
+        /\b(codebase|repo|repository|current code|local code)\b/i.test(context.originalIntent)
+    );
+  }
+
+  private shouldPreloadRepoMap(context: NodeContext, participatingAgents: AgentRole[]): boolean {
+    return Boolean(
+      this.toolBroker &&
+        participatingAgents.length > 0 &&
+        context.repositoryContext &&
+        this.enabledTools.includes("repo-map") &&
+        !context.toolEvidence?.some((item) => item.toolName === "repo-map") &&
+        isCodebaseStructureIntent(context)
+    );
   }
 
   private mockAgentResponse(

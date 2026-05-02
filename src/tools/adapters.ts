@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -32,9 +32,36 @@ export interface ToolAdapter {
 const TEXT_DECODER_LIMIT = 6000;
 const FINDING_LINE_LIMIT = 80;
 const SEARCH_LINE_LIMIT = 20;
+const SEARCH_FILE_SIZE_LIMIT = 512 * 1024;
+const SEARCH_EXCLUDED_DIRECTORIES = new Set([
+  ".git",
+  ".cambrian-tree",
+  "node_modules",
+  "dist",
+  "build",
+  "coverage",
+]);
+
+type RepoSearchBackend = "ripgrep" | "git-files" | "filesystem";
+
+interface RepoSearchMatch {
+  path: string;
+  line?: number;
+  text: string;
+  kind: "path" | "content";
+}
+
+interface RepoSearchResult {
+  backend: RepoSearchBackend;
+  matches: RepoSearchMatch[];
+  limitations: string[];
+  risks: string[];
+  confidence: number;
+}
 
 export function defaultToolAdapters(workingDirectory: string): ToolAdapter[] {
   return [
+    repoMapAdapter(workingDirectory),
     repoSearchAdapter(workingDirectory),
     repoReadAdapter(workingDirectory),
     packageInfoAdapter(workingDirectory),
@@ -50,34 +77,25 @@ function repoSearchAdapter(workingDirectory: string): ToolAdapter {
     readOnly: true,
     execute(request) {
       const completed = new Date().toISOString();
-      const result = spawnSync("rg", ["-n", "-F", "--", request.query], {
-        cwd: workingDirectory,
-        encoding: "utf-8",
-        timeout: 10_000,
-        maxBuffer: 512 * 1024,
-      });
+      const result = searchRepository(workingDirectory, request.query);
+      const matches = result.matches.slice(0, SEARCH_LINE_LIMIT);
+      const findings = matches.map((match) => formatRepoSearchMatch(match, request.query));
 
-      const stdout = typeof result.stdout === "string" ? result.stdout : "";
-      const stderr = typeof result.stderr === "string" ? result.stderr : "";
-      const lines = stdout.split(/\r?\n/).filter(Boolean).slice(0, SEARCH_LINE_LIMIT);
-      const limitations = ["Search is limited to the first 20 ripgrep matches."];
-
-      if (result.error || result.signal || (typeof result.status === "number" && result.status > 1)) {
-        const detail = result.error?.message ?? stderr.trim() ?? `rg exited with status ${result.status ?? "unknown"}`;
+      if (findings.length === 0 && result.risks.length > 0) {
         return {
           summary: `Repository search failed for "${request.query}".`,
           findings: [],
           decisionRelevance: [],
           constraintsDiscovered: [],
-          risksDiscovered: [`repo-search failed: ${detail}`],
+          risksDiscovered: result.risks,
           openQuestions: [],
           sources: [],
-          limitations: [...limitations, "ripgrep could not complete the search."],
+          limitations: result.limitations,
           confidence: 0,
         };
       }
 
-      if (result.status === 1) {
+      if (findings.length === 0) {
         return {
           summary: `No repository matches found for "${request.query}".`,
           findings: [],
@@ -86,24 +104,376 @@ function repoSearchAdapter(workingDirectory: string): ToolAdapter {
           risksDiscovered: [],
           openQuestions: [`No local code references matched "${request.query}".`],
           sources: [],
-          limitations,
-          confidence: 0.4,
+          limitations: result.limitations,
+          confidence: Math.min(result.confidence, 0.4),
         };
       }
 
       return {
-        summary: `Found ${lines.length} repository matches for "${request.query}".`,
-        findings: lines,
-        decisionRelevance: lines.map((line) => `Local match: ${line}`),
+        summary: `Found ${findings.length} repository matches for "${request.query}".`,
+        findings,
+        decisionRelevance: findings.map((line) => `Local match: ${line}`),
         constraintsDiscovered: [],
         risksDiscovered: [],
         openQuestions: [],
-        sources: lines.map((line) => sourceFromRipgrepLine(line, completed)),
-        limitations,
-        confidence: 0.75,
+        sources: matches.map((match) => sourceFromRepoSearchMatch(match, completed)),
+        limitations: result.limitations,
+        confidence: result.confidence,
       };
     },
   };
+}
+
+function repoMapAdapter(workingDirectory: string): ToolAdapter {
+  return {
+    toolName: "repo-map",
+    readOnly: true,
+    execute() {
+      const retrievedAt = new Date().toISOString();
+      try {
+        const files = repositoryFilesForMapping(workingDirectory);
+        const rootFiles = files
+          .filter((filePath) => !filePath.includes("/"))
+          .sort((a, b) => rootFilePriority(a) - rootFilePriority(b) || a.localeCompare(b));
+        const topLevelDirectories = [...new Set(
+          files
+            .filter((filePath) => filePath.includes("/"))
+            .map((filePath) => filePath.split("/")[0])
+        )].sort();
+        const representativeFiles = representativeRepoFiles(files);
+        const findings = [
+          ...rootFiles.slice(0, 12).map((filePath) => `Root file: ${filePath}`),
+          ...topLevelDirectories.slice(0, 20).map((directory) => `Top-level directory: ${directory}/`),
+          ...representativeFiles.slice(0, 20).map((filePath) => `Representative file: ${filePath}`),
+        ].slice(0, 40);
+
+        return {
+          summary: `Mapped repository structure: ${rootFiles.length} root files, ${topLevelDirectories.length} top-level directories, ${files.length} tracked/discovered files.`,
+          findings,
+          decisionRelevance: findings.map((finding) => `Repository structure: ${finding}`),
+          constraintsDiscovered: [],
+          risksDiscovered: [],
+          openQuestions: [],
+          sources: representativeFiles.slice(0, SEARCH_LINE_LIMIT).map((filePath) => ({
+            path: filePath,
+            title: filePath,
+            retrievedAt,
+          })),
+          limitations: [
+            "Repository map is limited to root files, top-level directories, and representative files.",
+            "Generated and dependency directories are excluded from filesystem fallback.",
+          ],
+          confidence: 0.8,
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+
+        return {
+          summary: "Could not map repository structure.",
+          findings: [],
+          decisionRelevance: [],
+          constraintsDiscovered: [],
+          risksDiscovered: [`repo-map failed: ${message}`],
+          openQuestions: [],
+          sources: [],
+          limitations: ["The repository structure could not be listed."],
+          confidence: 0,
+        };
+      }
+    },
+  };
+}
+
+function searchRepository(workingDirectory: string, query: string): RepoSearchResult {
+  const ripgrepResult = searchWithRipgrep(workingDirectory, query);
+  if (ripgrepResult) return ripgrepResult;
+
+  const gitResult = searchWithGitFiles(workingDirectory, query);
+  if (gitResult) return gitResult;
+
+  return searchWithFilesystemWalk(workingDirectory, query);
+}
+
+function searchWithRipgrep(workingDirectory: string, query: string): RepoSearchResult | undefined {
+  const ripgrep = resolveRipgrep();
+  if (!ripgrep) return undefined;
+
+  const filesResult = spawnSync(ripgrep, ["--files"], {
+    cwd: workingDirectory,
+    encoding: "utf-8",
+    timeout: 10_000,
+    maxBuffer: 512 * 1024,
+  });
+  const contentResult = spawnSync(ripgrep, ["-n", "-F", "-i", "--", query, "."], {
+    cwd: workingDirectory,
+    encoding: "utf-8",
+    timeout: 10_000,
+    maxBuffer: 512 * 1024,
+  });
+
+  const limitations = ["Search is limited to the first 20 repository matches."];
+  if (
+    contentResult.error ||
+    contentResult.signal ||
+    (typeof contentResult.status === "number" && contentResult.status > 1)
+  ) {
+    const stderr = typeof contentResult.stderr === "string" ? contentResult.stderr : "";
+    const detail =
+      contentResult.error?.message ??
+      stderr.trim() ??
+      `rg exited with status ${contentResult.status ?? "unknown"}`;
+    return {
+      backend: "ripgrep",
+      matches: [],
+      limitations: [...limitations, "ripgrep could not complete the search."],
+      risks: [`repo-search failed: ${detail}`],
+      confidence: 0,
+    };
+  }
+
+  const fileList = typeof filesResult.stdout === "string" ? filesResult.stdout.split(/\r?\n/).filter(Boolean) : [];
+  const pathMatches = findPathMatches(fileList, query);
+  const contentLines = typeof contentResult.stdout === "string"
+    ? contentResult.stdout.split(/\r?\n/).filter(Boolean)
+    : [];
+  const contentMatches = contentLines.map(matchFromRipgrepLine);
+
+  return {
+    backend: "ripgrep",
+    matches: [...pathMatches, ...contentMatches].slice(0, SEARCH_LINE_LIMIT),
+    limitations,
+    risks: [],
+    confidence: 0.75,
+  };
+}
+
+function searchWithGitFiles(workingDirectory: string, query: string): RepoSearchResult | undefined {
+  const files = listGitFiles(workingDirectory);
+  if (!files) return undefined;
+  const matches = searchFiles(workingDirectory, files, query);
+
+  return {
+    backend: "git-files",
+    matches,
+    limitations: [
+      "Search is limited to the first 20 repository matches.",
+      "ripgrep was unavailable; searched Git-tracked files with a slower fallback.",
+    ],
+    risks: [],
+    confidence: 0.65,
+  };
+}
+
+function repositoryFilesForMapping(workingDirectory: string): string[] {
+  const gitFiles = listGitFiles(workingDirectory);
+  return gitFiles ?? listFilesystemFiles(workingDirectory).map(normalizeRepoPath);
+}
+
+function listGitFiles(workingDirectory: string): string[] | undefined {
+  const result = spawnSync("git", ["ls-files"], {
+    cwd: workingDirectory,
+    encoding: "utf-8",
+    timeout: 10_000,
+    maxBuffer: 512 * 1024,
+  });
+
+  if (result.error || result.signal || result.status !== 0) return undefined;
+  return result.stdout.split(/\r?\n/).filter(Boolean).map(normalizeRepoPath);
+}
+
+function searchWithFilesystemWalk(workingDirectory: string, query: string): RepoSearchResult {
+  try {
+    const files = listFilesystemFiles(workingDirectory);
+    const matches = searchFiles(workingDirectory, files, query);
+
+    return {
+      backend: "filesystem",
+      matches,
+      limitations: [
+        "Search is limited to the first 20 repository matches.",
+        "ripgrep and git file listing were unavailable; searched the filesystem with default excludes.",
+      ],
+      risks: [],
+      confidence: 0.55,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    return {
+      backend: "filesystem",
+      matches: [],
+      limitations: [
+        "Search is limited to the first 20 repository matches.",
+        "ripgrep, git file listing, and filesystem fallback could not complete the search.",
+      ],
+      risks: [`repo-search failed: ${message}`],
+      confidence: 0,
+    };
+  }
+}
+
+function representativeRepoFiles(files: string[]): string[] {
+  const preferred = [
+    "package.json",
+    "README.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "tsconfig.json",
+    "src/cli/index.ts",
+    "src/orchestrator/orchestrator.ts",
+    "src/types/index.ts",
+  ];
+  const existing = new Set(files);
+  const preferredMatches = preferred.filter((filePath) => existing.has(filePath));
+  const byDirectory = new Map<string, string>();
+  for (const filePath of files.sort()) {
+    const directory = filePath.includes("/") ? filePath.split("/")[0] : ".";
+    if (!byDirectory.has(directory)) byDirectory.set(directory, filePath);
+  }
+  return [...new Set([...preferredMatches, ...byDirectory.values()])];
+}
+
+function rootFilePriority(filePath: string): number {
+  const priority = ["package.json", "README.md", "AGENTS.md", "CLAUDE.md", "tsconfig.json"];
+  const index = priority.indexOf(filePath);
+  return index === -1 ? priority.length : index;
+}
+
+function resolveRipgrep(): string | undefined {
+  const configured = process.env.CTO_RIPGREP_PATH?.trim();
+  if (configured) return existsSync(configured) ? configured : undefined;
+
+  const executable = process.platform === "win32" ? "rg.exe" : "rg";
+  for (const directory of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (!directory) continue;
+    const candidate = path.join(directory, executable);
+    if (existsSync(candidate)) return candidate;
+  }
+
+  const bundled = "/Applications/Codex.app/Contents/Resources/rg";
+  if (existsSync(bundled)) return bundled;
+
+  return undefined;
+}
+
+function findPathMatches(files: string[], query: string): RepoSearchMatch[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return [];
+
+  return files
+    .filter((filePath) => filePath.toLowerCase().includes(normalizedQuery))
+    .sort((a, b) => pathMatchScore(b, normalizedQuery) - pathMatchScore(a, normalizedQuery) || a.localeCompare(b))
+    .slice(0, SEARCH_LINE_LIMIT)
+    .map((filePath) => ({
+      path: normalizeRepoPath(filePath),
+      text: `path matched "${query}"`,
+      kind: "path",
+    }));
+}
+
+function searchFiles(workingDirectory: string, files: string[], query: string): RepoSearchMatch[] {
+  const matches: RepoSearchMatch[] = [];
+  matches.push(...findPathMatches(files, query));
+
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return matches.slice(0, SEARCH_LINE_LIMIT);
+
+  for (const filePath of files) {
+    if (matches.length >= SEARCH_LINE_LIMIT) break;
+    const absolutePath = path.join(workingDirectory, filePath);
+    let stats;
+    try {
+      stats = statSync(absolutePath);
+    } catch {
+      continue;
+    }
+    if (!stats.isFile() || stats.size > SEARCH_FILE_SIZE_LIMIT) continue;
+
+    const buffer = readFileSync(absolutePath);
+    if (buffer.includes(0)) continue;
+
+    const lines = buffer.toString("utf-8").split(/\r?\n/);
+    for (const [index, line] of lines.entries()) {
+      if (matches.length >= SEARCH_LINE_LIMIT) break;
+      if (!line.toLowerCase().includes(normalizedQuery)) continue;
+      matches.push({
+        path: normalizeRepoPath(filePath),
+        line: index + 1,
+        text: line,
+        kind: "content",
+      });
+    }
+  }
+
+  return matches.slice(0, SEARCH_LINE_LIMIT);
+}
+
+function listFilesystemFiles(workingDirectory: string): string[] {
+  const files: string[] = [];
+
+  function walk(directory: string, relativeDirectory = ""): void {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const relativePath = relativeDirectory ? path.join(relativeDirectory, entry.name) : entry.name;
+      const absolutePath = path.join(directory, entry.name);
+      if (entry.isSymbolicLink()) continue;
+      if (entry.isDirectory()) {
+        if (SEARCH_EXCLUDED_DIRECTORIES.has(entry.name)) continue;
+        walk(absolutePath, relativePath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      files.push(relativePath);
+    }
+  }
+
+  const rootStats = lstatSync(workingDirectory);
+  if (!rootStats.isDirectory()) throw new Error(`${workingDirectory} is not a directory`);
+  walk(workingDirectory);
+  return files;
+}
+
+function matchFromRipgrepLine(line: string): RepoSearchMatch {
+  const [filePath, lineNumber, ...rest] = line.split(":");
+  return {
+    path: normalizeRepoPath(filePath),
+    line: Number(lineNumber) || undefined,
+    text: rest.length > 0 ? rest.join(":") : line,
+    kind: "content",
+  };
+}
+
+function normalizeRepoPath(filePath: string): string {
+  return filePath.replace(/^\.\//, "");
+}
+
+function formatRepoSearchMatch(match: RepoSearchMatch, query: string): string {
+  if (match.kind === "path") return `${match.path}: path matched "${query}"`;
+  return `${match.path}:${match.line ?? 1}:${match.text}`;
+}
+
+function sourceFromRepoSearchMatch(match: RepoSearchMatch, retrievedAt: string): ToolEvidenceSource {
+  if (match.kind === "path") {
+    return {
+      path: match.path,
+      title: match.path,
+      retrievedAt,
+    };
+  }
+
+  return {
+    path: match.path,
+    quote: match.text,
+    title: `${match.path}:${match.line ?? 1}`,
+    retrievedAt,
+  };
+}
+
+function pathMatchScore(filePath: string, normalizedQuery: string): number {
+  const normalizedPath = filePath.toLowerCase();
+  const segments = normalizedPath.split(/[\\/]/);
+  if (segments.some((segment) => segment === normalizedQuery || segment.startsWith(`${normalizedQuery}.`))) return 3;
+  if (segments.some((segment) => segment.startsWith(normalizedQuery))) return 2;
+  return normalizedPath.includes(normalizedQuery) ? 1 : 0;
 }
 
 function repoReadAdapter(workingDirectory: string): ToolAdapter {
@@ -260,15 +630,5 @@ function unavailableAdapter(toolName: "web-search" | "web-fetch" | "docs-fetch")
         confidence: 0.1,
       };
     },
-  };
-}
-
-function sourceFromRipgrepLine(line: string, retrievedAt: string): ToolEvidenceSource {
-  const [filePath, lineNumber, ...rest] = line.split(":");
-  return {
-    path: filePath,
-    quote: rest.length > 0 ? rest.join(":") : line,
-    title: lineNumber ? `${filePath}:${lineNumber}` : filePath,
-    retrievedAt,
   };
 }

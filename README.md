@@ -202,11 +202,15 @@ cto run "Build from these domain constraints" --ground-truth file:./facts.json
 Use `--tools` when agents need local repo or package evidence during debate:
 
 ```bash
+cto run "How is this codebase structured?" --tools repo-map,repo-read
 cto run "Follow local CLI option patterns" --tools repo-search,repo-read,package-info
 cto run "Inspect dependency metadata before proposing changes" --tools package-info,repo-search
 ```
 
-Phase 1 ships functional local adapters for `repo-search`, `repo-read`, and `package-info`. `web-search`, `web-fetch`, and `docs-fetch` are reserved allowlisted names for future/provider-backed adapters; until they are wired to a real provider, requests for them return unavailable evidence rather than live web, webpage, or vendor-doc results.
+Phase 1 ships functional local adapters for `repo-map`, `repo-search`, `repo-read`, and `package-info`. `web-search`, `web-fetch`, and `docs-fetch` are reserved allowlisted names for future/provider-backed adapters; until they are wired to a real provider, requests for them return unavailable evidence rather than live web, webpage, or vendor-doc results.
+
+`repo-map` summarizes root files, top-level directories, and representative files for codebase-structure questions.
+`repo-search` prefers ripgrep (`rg`) for fast local search. If `rg` is not available in the launch environment, CTO falls back to Git-tracked files and then to a filesystem walk with default excludes. Set `CTO_RIPGREP_PATH` to pin the exact `rg` binary when a non-shell launcher has a narrow `PATH`.
 
 Tools are read-only and orchestrator-mediated. Agents emit `TOOL_REQUEST [tool-name]: query`; CTO validates the request, applies budgets, resolves allowlisted tools, and stores `ToolRequest` and `ToolEvidence` records in saved state. Tool evidence is compacted into later agent prompts and the moderator prompt, while skipped, unavailable, or failed requests remain visible for audit.
 

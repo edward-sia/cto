@@ -94,8 +94,8 @@ cto run "Build X" -y
 # debate-tree shape only, no API key required
 cto run "Build X" --dry-run
 
-npx tsx src/cli/index.ts run "Design an integration against current vendor docs" --tools docs-fetch,web-search
 npx tsx src/cli/index.ts run "Use local repo patterns before proposing changes" --tools repo-search,repo-read,package-info
+npx tsx src/cli/index.ts run "Inspect package metadata before choosing dependencies" --tools package-info,repo-search
 ```
 
 ### LLM Providers
@@ -160,6 +160,9 @@ Options:
       --dry-run              No LLM or Codex calls — exercise tree shape only
       --ground-truth <spec>  Inject verified facts from file:, sample:, or
                              openapi: sources
+      --tools <tools>        Comma-separated allowlist of read-only research
+                             tools agents may request during debate
+      --no-tools             Disable agent-requested research tools
       --interactive-plan     Review candidate leaves before implementation
       --monitor              Open the live browser monitor for this run
       --ui-review            Use the browser UI for interactive plan decisions
@@ -196,14 +199,16 @@ cto run "Build from these domain constraints" --ground-truth file:./facts.json
 
 ### Agent-Requested Research Tools
 
-Use `--tools` when agents need fresh public evidence or local repo evidence during debate:
+Use `--tools` when agents need local repo or package evidence during debate:
 
 ```bash
-cto run "Choose the current Stripe Checkout integration shape" --tools docs-fetch,web-search
 cto run "Follow local CLI option patterns" --tools repo-search,repo-read,package-info
+cto run "Inspect dependency metadata before proposing changes" --tools package-info,repo-search
 ```
 
-Tools are read-only and orchestrator-mediated. Agents emit `TOOL_REQUEST [tool-name]: query`; CTO validates the request, applies budgets, resolves allowlisted tools, and stores `ToolRequest` and `ToolEvidence` records in saved state. Tool evidence is compacted into later agent prompts and the moderator prompt, while skipped or failed requests remain visible for audit.
+Phase 1 ships functional local adapters for `repo-search`, `repo-read`, and `package-info`. `web-search` and `docs-fetch` are reserved allowlisted names for future/provider-backed adapters; until they are wired to a real provider, requests for them return unavailable evidence rather than live web or vendor-doc results.
+
+Tools are read-only and orchestrator-mediated. Agents emit `TOOL_REQUEST [tool-name]: query`; CTO validates the request, applies budgets, resolves allowlisted tools, and stores `ToolRequest` and `ToolEvidence` records in saved state. Tool evidence is compacted into later agent prompts and the moderator prompt, while skipped, unavailable, or failed requests remain visible for audit.
 
 Use `--interactive-plan` when you want a human checkpoint before leaf execution or exploration synthesis. CTO will pause on each candidate leaf and let you proceed, revise once with a new prompt that creates a debated child branch, or kill the branch before expensive work starts.
 

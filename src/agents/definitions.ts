@@ -1193,10 +1193,10 @@ export function parseAgentResponse(
   }
 
   const toolNameSet = new Set<string>(TOOL_NAMES);
-  const toolRequestRegex =
-    /TOOL_REQUEST\s+\[([^\]]+)\]:\s*(.+?)(?=\nTOOL_REQUEST|\nCONTEXT_UPDATE|\n##|\n\n|$)/gis;
-  let toolMatch: RegExpExecArray | null;
-  while ((toolMatch = toolRequestRegex.exec(rawResponse)) !== null) {
+  const toolRequestRegex = /^TOOL_REQUEST\s+\[([^\]]+)\]:[ \t]*(.*?)[ \t]*$/i;
+  for (const line of rawResponse.split(/\r?\n/)) {
+    const toolMatch = toolRequestRegex.exec(line);
+    if (!toolMatch) continue;
     const toolName = toolMatch[1].trim();
     const query = toolMatch[2].trim();
     if (toolNameSet.has(toolName) && query) {

@@ -29,6 +29,24 @@ CONTEXT_UPDATE [implementation-spec]: Preserve existing Commander option parser 
     );
   });
 
+  it("ignores empty tool requests without consuming following tool request lines", () => {
+    const raw = `TOOL_REQUEST [docs-fetch]:
+TOOL_REQUEST [repo-search]: collectValues helper in CLI options
+CONTEXT_UPDATE [implementation-spec]: Preserve existing Commander option parser patterns.`;
+
+    const result = parseAgentResponse("developer", raw);
+
+    expect(result.toolRequests).toEqual([
+      {
+        toolName: "repo-search",
+        query: "collectValues helper in CLI options",
+      },
+    ]);
+    expect(result.contextUpdates?.implementationSpec).toBe(
+      "Preserve existing Commander option parser patterns."
+    );
+  });
+
   it("accumulates each qa-engineer test scenario into a separate acceptanceCriteria entry", () => {
     const raw = `## Test Strategy
 Here is the plan.

@@ -70,8 +70,10 @@ describe("ModeratorAssessmentSchema", () => {
 describe("DebateEngine tool integration", () => {
   it("resolves tool requests before moderator assessment and persists evidence in the transcript", async () => {
     const calls: IncomingToolRequest[][] = [];
+    const events: string[] = [];
     const fakeBroker: Pick<ToolBroker, "resolveRoundRequests"> = {
       async resolveRoundRequests(input) {
+        events.push("broker");
         calls.push(input.requests);
         return {
           requests: input.requests.map((request, idx) => ({
@@ -119,6 +121,10 @@ describe("DebateEngine tool integration", () => {
       dryRun: true,
       nodeId: "node-tools",
       toolBroker: fakeBroker,
+      onProgress(event) {
+        if (event.type === "tools_resolved") events.push("tools");
+        if (event.type === "moderator_assessment") events.push("moderator");
+      },
     });
 
     const transcript = await engine.runDebate(
@@ -140,5 +146,8 @@ describe("DebateEngine tool integration", () => {
     expect(transcript.toolRequests?.[0].status).toBe("completed");
     expect(transcript.contextUpdates.toolEvidence?.[0].summary).toContain("Official docs");
     expect(transcript.compactState?.evidenceFindings).toContain("The API is documented.");
+    expect(events).toEqual(expect.arrayContaining(["broker", "tools", "moderator"]));
+    expect(events.indexOf("broker")).toBeLessThan(events.indexOf("moderator"));
+    expect(events.indexOf("tools")).toBeLessThan(events.indexOf("moderator"));
   });
 });

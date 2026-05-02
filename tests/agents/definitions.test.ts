@@ -126,7 +126,7 @@ describe("buildAgentPrompt", () => {
   });
 
   it("caps rendered tool evidence to the most recent items", () => {
-    const toolEvidence: ToolEvidence[] = Array.from({ length: 9 }, (_, index) => ({
+    const toolEvidence: ToolEvidence[] = Array.from({ length: 3 }, (_, index) => ({
       id: `evidence-${index + 1}`,
       requestId: `request-${index + 1}`,
       toolName: "repo-search",
@@ -150,6 +150,7 @@ describe("buildAgentPrompt", () => {
     const { user } = buildAgentPrompt(AGENT_DEFINITIONS["developer"], {
       priorRoundsHistory: [],
       currentRoundSoFar: [],
+      toolEvidencePromptLimit: 2,
       phase: "implementation",
       roundNumber: 1,
       context: {
@@ -160,7 +161,8 @@ describe("buildAgentPrompt", () => {
     });
 
     expect(user).not.toContain("Evidence summary 1");
-    expect(user).toContain("Evidence summary 9");
+    expect(user).toContain("Evidence summary 2");
+    expect(user).toContain("Evidence summary 3");
   });
 
   it("uses compact debate state instead of full prior transcript when provided", () => {

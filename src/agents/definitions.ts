@@ -989,7 +989,7 @@ ${decomp.feasibilityFlags.map((f) => `- ${f}`).join("\n") || "- (none)"}`
     : "";
   const toolEvidenceSection = renderToolEvidenceForPrompt(
     input.context.toolEvidence,
-    DEFAULT_TOOL_EVIDENCE_PROMPT_LIMIT
+    input.toolEvidencePromptLimit ?? DEFAULT_TOOL_EVIDENCE_PROMPT_LIMIT
   );
 
   const contextSummary = [

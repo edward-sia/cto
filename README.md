@@ -206,7 +206,7 @@ cto run "Follow local CLI option patterns" --tools repo-search,repo-read,package
 cto run "Inspect dependency metadata before proposing changes" --tools package-info,repo-search
 ```
 
-Phase 1 ships functional local adapters for `repo-search`, `repo-read`, and `package-info`. `web-search` and `docs-fetch` are reserved allowlisted names for future/provider-backed adapters; until they are wired to a real provider, requests for them return unavailable evidence rather than live web or vendor-doc results.
+Phase 1 ships functional local adapters for `repo-search`, `repo-read`, and `package-info`. `web-search`, `web-fetch`, and `docs-fetch` are reserved allowlisted names for future/provider-backed adapters; until they are wired to a real provider, requests for them return unavailable evidence rather than live web, webpage, or vendor-doc results.
 
 Tools are read-only and orchestrator-mediated. Agents emit `TOOL_REQUEST [tool-name]: query`; CTO validates the request, applies budgets, resolves allowlisted tools, and stores `ToolRequest` and `ToolEvidence` records in saved state. Tool evidence is compacted into later agent prompts and the moderator prompt, while skipped, unavailable, or failed requests remain visible for audit.
 

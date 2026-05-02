@@ -42,8 +42,9 @@ export function renderToolEvidenceForPrompt(
   return lines.join("\n").trim();
 }
 
-export function rollupToolEvidence(evidence: ToolEvidence[] | undefined): ToolEvidenceRollup {
-  const items = evidence ?? [];
+export function rollupToolEvidence(evidence: ToolEvidence[] | undefined, maxItems = 8): ToolEvidenceRollup {
+  const limit = Number.isFinite(maxItems) ? Math.floor(maxItems) : 0;
+  const items = limit > 0 ? (evidence ?? []).slice(-limit) : [];
   return {
     evidenceFindings: uniqueFlat(items.flatMap((item) => item.findings)).slice(-8),
     evidenceConstraints: uniqueFlat(items.flatMap((item) => item.constraintsDiscovered)).slice(-8),

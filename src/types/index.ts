@@ -506,6 +506,7 @@ export interface AgentInput {
   priorRoundsHistory: DebateMessage[];
   currentRoundSoFar: DebateMessage[];
   compactDebateState?: CompactDebateState;
+  toolEvidencePromptLimit?: number;
   context: NodeContext;
   phase: TreePhase;
   roundNumber: number;

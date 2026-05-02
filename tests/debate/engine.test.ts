@@ -67,6 +67,87 @@ describe("ModeratorAssessmentSchema", () => {
   });
 });
 
+describe("DebateEngine compact state", () => {
+  it("persists a compact state alongside the full transcript", async () => {
+    const engine = new DebateEngine({
+      openai: {} as OpenAI,
+      reasoningModel: "test-model",
+      maxDebateRounds: 1,
+      maxBranching: 2,
+      dryRun: true,
+    });
+
+    const transcript = await engine.runDebate(
+      "requirements",
+      {
+        originalIntent: "Build a REST API",
+        intentDossier: {
+          goal: "Build a REST API",
+          userValue: "Useful API",
+          nonGoals: [],
+          constraints: ["No invented auth requirements"],
+          acceptanceCriteria: ["Supports CRUD"],
+          requiredChecks: ["npm test"],
+          riskAreas: ["Over-scoping"],
+          knownUnknowns: ["Auth scope"],
+          successSignals: ["Tests pass"],
+          failureModes: ["Scope drift"],
+        },
+        ancestorSummaries: [],
+      },
+      ["product-manager", "business-analyst"]
+    );
+
+    expect(transcript.rounds[0].messages.length).toBe(2);
+    expect(transcript.compactState?.lastRoundSummary).toContain("[dry-run]");
+    expect(transcript.compactState?.acceptedFacts).toContain("No invented auth requirements");
+  });
+
+  it("applies the tool evidence prompt limit to inherited compact evidence", async () => {
+    const inheritedEvidence = Array.from({ length: 3 }, (_, index) => ({
+      id: `evidence-${index + 1}`,
+      requestId: `request-${index + 1}`,
+      toolName: "repo-search" as const,
+      query: `query-${index + 1}`,
+      requestedBy: "developer" as const,
+      additionalRequesters: [],
+      nodeId: "ancestor-node",
+      roundNumber: 1,
+      summary: `Inherited evidence ${index + 1}`,
+      findings: [`Inherited finding ${index + 1}`],
+      decisionRelevance: [],
+      constraintsDiscovered: [`Inherited constraint ${index + 1}`],
+      risksDiscovered: [],
+      openQuestions: [],
+      sources: [],
+      limitations: [],
+      confidence: 0.8,
+      createdAt: "2026-05-02T00:00:00.000Z",
+    }));
+    const engine = new DebateEngine({
+      openai: {} as OpenAI,
+      reasoningModel: "test-model",
+      maxDebateRounds: 1,
+      maxBranching: 2,
+      dryRun: true,
+      toolEvidencePromptLimit: 1,
+    });
+
+    const transcript = await engine.runDebate(
+      "implementation",
+      {
+        originalIntent: "Build with inherited evidence",
+        ancestorSummaries: [],
+        toolEvidence: inheritedEvidence,
+      },
+      ["developer"]
+    );
+
+    expect(transcript.compactState?.evidenceFindings).toEqual(["Inherited finding 3"]);
+    expect(transcript.compactState?.evidenceConstraints).toEqual(["Inherited constraint 3"]);
+  });
+});
+
 describe("DebateEngine tool integration", () => {
   it("resolves tool requests before moderator assessment and renders evidence in the moderator prompt", async () => {
     const calls: IncomingToolRequest[][] = [];
@@ -153,6 +234,7 @@ TOOL_REQUEST [docs-fetch]: official docs for implementation`);
       dryRun: false,
       nodeId: "node-tools",
       toolBroker: fakeBroker,
+      toolEvidencePromptLimit: 1,
       onProgress(event) {
         if (event.type === "tools_resolved") events.push("tools");
         if (event.type === "tools_resolved") toolEvents.push(event);
@@ -186,7 +268,9 @@ TOOL_REQUEST [docs-fetch]: official docs for implementation`);
     expect(transcript.compactState?.evidenceFindings).toContain("The API is documented.");
     expect(moderatorPrompt).toContain("## Current Tool Evidence");
     expect(moderatorPrompt).not.toContain("Older evidence summary 1.");
+    expect(moderatorPrompt).not.toContain("Older evidence summary 8.");
     expect(moderatorPrompt).not.toContain("Older finding 1.");
+    expect(moderatorPrompt).not.toContain("Older finding 8.");
     expect(moderatorPrompt).toContain("Official docs support the requested API.");
     expect(moderatorPrompt).toContain("The API is documented.");
     expect(toolEvents[0]).toMatchObject({

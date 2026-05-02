@@ -120,6 +120,31 @@ describe("TreeOrchestrator", () => {
     expect(nodeWithRequest?.context.toolEvidence?.[0].summary).toContain("docs-fetch adapter");
   });
 
+  it("enforces the tool request budget across the whole run", async () => {
+    const orchestrator = new TreeOrchestrator({} as OpenAI, {
+      dryRun: true,
+      maxDepth: 5,
+      maxDebateRounds: 1,
+      maxBranching: 2,
+      pruneThreshold: 0,
+      toolUse: {
+        enabled: true,
+        allowlist: ["docs-fetch"],
+        maxRequestsPerNode: 4,
+        maxRequestsPerRound: 2,
+        maxRequestsPerRun: 1,
+        maxEvidenceItemsInPrompt: 5,
+        autoRunReadOnly: true,
+      },
+    });
+
+    const state = await orchestrator.run("Build with tool research");
+    const requests = collectNodes(state.root).flatMap((node) => node.toolRequests ?? []);
+
+    expect(requests.filter((request) => request.status === "completed")).toHaveLength(1);
+    expect(requests.some((request) => request.reason === "Skipped because run budget is exhausted.")).toBe(true);
+  });
+
   it("does not run verification commands during dry-run execution", async () => {
     const orchestrator = new TreeOrchestrator(
       {} as OpenAI,

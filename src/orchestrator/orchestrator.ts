@@ -360,6 +360,8 @@ export class TreeOrchestrator {
       onProgress: (event) => this.callbacks.onDebateProgress?.(node.id, event),
       nodeId: node.id,
       toolBroker: this.toolBroker,
+      initialRunToolRequestCount: this.countBudgetedToolRequests(this.runState.root),
+      toolEvidencePromptLimit: this.config.toolUse?.maxEvidenceItemsInPrompt,
     });
 
     const transcript = await debateEngine.runDebate(phase, node.context, agents);
@@ -628,6 +630,13 @@ export class TreeOrchestrator {
     if (node.status === "pruned") return [];
     if (this.isLeaf(node)) return [node];
     return node.children.flatMap((c) => this.collectLeaves(c));
+  }
+
+  private countBudgetedToolRequests(node: TreeNode): number {
+    const own = (node.toolRequests ?? []).filter((request) =>
+      request.status === "running" || request.status === "completed" || request.status === "failed"
+    ).length;
+    return own + node.children.reduce((total, child) => total + this.countBudgetedToolRequests(child), 0);
   }
 
   private isHumanRevisionDescendant(root: TreeNode, node: TreeNode): boolean {

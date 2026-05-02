@@ -135,8 +135,8 @@ alternative addresses the **load-bearing claims** and **in-scope** items from th
 
 Be calibrated: most alternatives that are actually worth branching will score high on BOTH dimensions.`;
 
-function initialCompactState(context: NodeContext): CompactDebateState {
-  const evidenceRollup = rollupToolEvidence(context.toolEvidence);
+function initialCompactState(context: NodeContext, toolEvidencePromptLimit = DEFAULT_TOOL_EVIDENCE_PROMPT_LIMIT): CompactDebateState {
+  const evidenceRollup = rollupToolEvidence(context.toolEvidence, toolEvidencePromptLimit);
 
   return {
     acceptedFacts: [
@@ -249,6 +249,12 @@ function renderCompactForModerator(state: CompactDebateState): string {
   ].filter(Boolean).join("\n\n");
 }
 
+function countBudgetedToolRequests(requests: ToolRequest[]): number {
+  return requests.filter((request) =>
+    request.status === "running" || request.status === "completed" || request.status === "failed"
+  ).length;
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface DebateEngineConfig {
@@ -261,6 +267,8 @@ export interface DebateEngineConfig {
   onProgress?: (event: DebateProgressEvent) => void;
   nodeId?: string;
   toolBroker?: Pick<ToolBroker, "resolveRoundRequests">;
+  initialRunToolRequestCount?: number;
+  toolEvidencePromptLimit?: number;
 }
 
 export type DebateProgressEvent =
@@ -285,6 +293,8 @@ export class DebateEngine {
   private usage: LLMUsage = emptyUsage();
   private nodeId: string;
   private toolBroker?: Pick<ToolBroker, "resolveRoundRequests">;
+  private initialRunToolRequestCount: number;
+  private toolEvidencePromptLimit: number;
 
   constructor(config: DebateEngineConfig) {
     this.openai = config.openai;
@@ -296,6 +306,8 @@ export class DebateEngine {
     this.onProgress = config.onProgress;
     this.nodeId = config.nodeId ?? "unknown-node";
     this.toolBroker = config.toolBroker;
+    this.initialRunToolRequestCount = config.initialRunToolRequestCount ?? 0;
+    this.toolEvidencePromptLimit = config.toolEvidencePromptLimit ?? DEFAULT_TOOL_EVIDENCE_PROMPT_LIMIT;
   }
 
   async runDebate(
@@ -308,7 +320,7 @@ export class DebateEngine {
     let allMessages: DebateMessage[] = [];
     const accumulatedContextUpdates: Partial<NodeContext> = {};
     const accumulatedToolRequests: ToolRequest[] = [];
-    let compactState = initialCompactState(context);
+    let compactState = initialCompactState(context, this.toolEvidencePromptLimit);
 
     for (let roundNum = 1; roundNum <= this.maxRounds; roundNum++) {
       this.onProgress?.({ type: "round_start", round: roundNum, totalRounds: this.maxRounds });
@@ -325,6 +337,7 @@ export class DebateEngine {
           priorRoundsHistory: roundNum === 1 ? allMessages : [],
           currentRoundSoFar: [...roundMessages],
           compactDebateState: roundNum > 1 ? compactState : undefined,
+          toolEvidencePromptLimit: this.toolEvidencePromptLimit,
           context,
           phase,
           roundNumber: roundNum,
@@ -385,6 +398,8 @@ export class DebateEngine {
           requests: roundToolRequests,
           existingRequests: accumulatedToolRequests,
           existingEvidence: context.toolEvidence ?? [],
+          runRequestCount: this.initialRunToolRequestCount + countBudgetedToolRequests(accumulatedToolRequests),
+          nodeRequestCount: countBudgetedToolRequests(accumulatedToolRequests),
         });
         accumulatedToolRequests.push(...resolved.requests);
 
@@ -395,7 +410,7 @@ export class DebateEngine {
           };
           mergeContextUpdates(accumulatedContextUpdates, { toolEvidence: context.toolEvidence });
 
-          const evidenceRollup = rollupToolEvidence(context.toolEvidence);
+          const evidenceRollup = rollupToolEvidence(context.toolEvidence, this.toolEvidencePromptLimit);
           compactState = {
             ...compactState,
             ...evidenceRollup,
@@ -466,7 +481,7 @@ export class DebateEngine {
     const transcript = compactMessages(roundMessages);
     const toolEvidenceSection = renderToolEvidenceForPrompt(
       context.toolEvidence,
-      DEFAULT_TOOL_EVIDENCE_PROMPT_LIMIT
+      this.toolEvidencePromptLimit
     );
 
     const alternativesSummary =

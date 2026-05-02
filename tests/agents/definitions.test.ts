@@ -110,36 +110,67 @@ describe("buildAgentPrompt", () => {
 });
 
 describe("Tool schemas", () => {
+  const validToolEvidence = {
+    id: "evidence-1",
+    requestId: "request-1",
+    toolName: "docs-fetch",
+    query: "official Commander docs",
+    requestedBy: "developer",
+    additionalRequesters: ["technical-writer"],
+    nodeId: "node-1",
+    roundNumber: 1,
+    summary: "Commander supports custom option processors.",
+    findings: ["Repeatable options can be collected with a parser."],
+    decisionRelevance: ["Use Commander instead of custom argv parsing."],
+    constraintsDiscovered: ["Parser must preserve previous values."],
+    risksDiscovered: ["Local wrapper still needs tests."],
+    openQuestions: [],
+    sources: [
+      {
+        title: "Commander options docs",
+        url: "https://example.com/commander",
+        retrievedAt: "2026-05-02T00:00:00.000Z",
+      },
+    ],
+    limitations: ["Fixture URL is not real documentation."],
+    confidence: 0.8,
+    createdAt: "2026-05-02T00:00:01.000Z",
+  };
+
   it("validates persisted tool evidence", () => {
-    const parsed = ToolEvidenceSchema.parse({
-      id: "evidence-1",
-      requestId: "request-1",
-      toolName: "docs-fetch",
-      query: "official Commander docs",
-      requestedBy: "developer",
-      additionalRequesters: ["technical-writer"],
-      nodeId: "node-1",
-      roundNumber: 1,
-      summary: "Commander supports custom option processors.",
-      findings: ["Repeatable options can be collected with a parser."],
-      decisionRelevance: ["Use Commander instead of custom argv parsing."],
-      constraintsDiscovered: ["Parser must preserve previous values."],
-      risksDiscovered: ["Local wrapper still needs tests."],
-      openQuestions: [],
-      sources: [
-        {
-          title: "Commander options docs",
-          url: "https://example.com/commander",
-          retrievedAt: "2026-05-02T00:00:00.000Z",
-        },
-      ],
-      limitations: ["Fixture URL is not real documentation."],
-      confidence: 0.8,
-      createdAt: "2026-05-02T00:00:01.000Z",
-    });
+    const parsed = ToolEvidenceSchema.parse(validToolEvidence);
 
     expect(parsed.toolName).toBe("docs-fetch");
     expect(parsed.sources[0].retrievedAt).toBe("2026-05-02T00:00:00.000Z");
+  });
+
+  it("rejects invalid requester roles", () => {
+    expect(() =>
+      ToolEvidenceSchema.parse({
+        ...validToolEvidence,
+        requestedBy: "not-a-role",
+      })
+    ).toThrow();
+
+    expect(() =>
+      ToolEvidenceSchema.parse({
+        ...validToolEvidence,
+        additionalRequesters: ["not-a-role"],
+      })
+    ).toThrow();
+
+    expect(() =>
+      ToolRequestSchema.parse({
+        id: "request-1",
+        toolName: "docs-fetch",
+        query: "official Commander docs",
+        requestedBy: "not-a-role",
+        nodeId: "node-1",
+        roundNumber: 1,
+        status: "pending",
+        createdAt: "2026-05-02T00:00:00.000Z",
+      })
+    ).toThrow();
   });
 });
 

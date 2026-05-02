@@ -463,7 +463,7 @@ export interface RunConfig {
   phaseDepths: Record<TreePhase, [number, number]>;
   dryRun: boolean;
   interactivePlan: boolean;
-  toolUse: ToolUseConfig;
+  toolUse?: ToolUseConfig;
   enableDeterministicCache: boolean;
   enableSketchRanking: boolean;
   sketchExecutionTopN: number;

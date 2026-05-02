@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TOOL_NAMES } from "../types/index.js";
+import { AGENT_ROLES, TOOL_NAMES } from "../types/index.js";
 
 export const AlternativeSchema = z.object({
   id: z.string(),
@@ -81,6 +81,7 @@ export const PruneSchedulePointSchema = z.object({
 });
 
 export const ToolNameSchema = z.enum(TOOL_NAMES);
+export const AgentRoleSchema = z.enum(AGENT_ROLES);
 
 export const ToolUseConfigSchema = z.object({
   enabled: z.boolean(),
@@ -96,7 +97,7 @@ export const ToolRequestSchema = z.object({
   id: z.string().min(1),
   toolName: ToolNameSchema,
   query: z.string().min(1),
-  requestedBy: z.string(),
+  requestedBy: AgentRoleSchema,
   nodeId: z.string().min(1),
   roundNumber: z.number().int().positive(),
   status: z.enum(["pending", "running", "completed", "skipped", "failed"]),
@@ -123,8 +124,8 @@ export const ToolEvidenceSchema = z.object({
   requestId: z.string().min(1),
   toolName: ToolNameSchema,
   query: z.string().min(1),
-  requestedBy: z.string(),
-  additionalRequesters: z.array(z.string()).default([]),
+  requestedBy: AgentRoleSchema,
+  additionalRequesters: z.array(AgentRoleSchema).default([]),
   nodeId: z.string().min(1),
   roundNumber: z.number().int().positive(),
   summary: z.string(),

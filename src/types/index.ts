@@ -152,6 +152,7 @@ export interface DebateTranscript {
   llmUsage: LLMUsage;
   contextUpdates: Partial<NodeContext>;
   compactState?: CompactDebateState;
+  toolRequests?: ToolRequest[];
 }
 
 export interface HumanIntervention {

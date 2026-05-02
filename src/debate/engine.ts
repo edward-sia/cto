@@ -18,6 +18,7 @@ import type {
   NodeContext,
   TreePhase,
   CompactDebateState,
+  ToolRequest,
 } from "../types/index.js";
 import {
   AGENT_DEFINITIONS,
@@ -25,7 +26,8 @@ import {
   parseAgentResponse,
 } from "../agents/definitions.js";
 import { ModeratorAssessmentSchema } from "../schemas/index.js";
-import { rollupToolEvidence } from "../tools/render.js";
+import type { ToolBroker, IncomingToolRequest } from "../tools/broker.js";
+import { renderToolEvidenceForPrompt, rollupToolEvidence } from "../tools/render.js";
 import { withRetry } from "../utils/retry.js";
 import { addUsageFromResponse, emptyUsage } from "../utils/usage.js";
 import type { LLMUsage } from "../types/index.js";
@@ -46,6 +48,11 @@ function mergeContextUpdates(
     target.architectureDecisions = [
       ...new Set([...(target.architectureDecisions ?? []), ...source.architectureDecisions]),
     ];
+  }
+  if (source.toolEvidence?.length) {
+    const evidenceById = new Map((target.toolEvidence ?? []).map((item) => [item.id, item]));
+    for (const item of source.toolEvidence) evidenceById.set(item.id, item);
+    target.toolEvidence = [...evidenceById.values()];
   }
 }
 
@@ -81,6 +88,11 @@ After each round of debate, you analyse the transcript and determine:
 ## Rules for CONTINUE
 - CONTINUE is only justified when there is genuine unresolved disagreement that more discussion could resolve, OR when alternatives have been proposed but support is still forming.
 - Do NOT pick CONTINUE simply because "more rounds are available." Each extra round costs tokens; it must earn its keep.
+
+## Tool Evidence
+- Prefer positions backed by Tool Evidence over unsupported claims.
+- Do not treat unsupported tool requests as evidence.
+- If live alternatives depend on missing evidence, choose CONTINUE when another round could use available evidence to resolve them.
 
 ## Calibration
 Over-branching wastes compute and fractures focus. Under-branching misses genuine trade-offs.
@@ -245,12 +257,15 @@ export interface DebateEngineConfig {
   maxBranching: number;
   dryRun?: boolean;
   onProgress?: (event: DebateProgressEvent) => void;
+  nodeId?: string;
+  toolBroker?: Pick<ToolBroker, "resolveRoundRequests">;
 }
 
 export type DebateProgressEvent =
   | { type: "round_start"; round: number; totalRounds: number }
   | { type: "agent_speaking"; agent: AgentRole; round: number }
   | { type: "agent_spoke"; agent: AgentRole; round: number; message: string }
+  | { type: "tools_resolved"; round: number; requested: number; completed: number; skipped: number; failed: number }
   | { type: "moderator_assessment"; round: number; outcome: ModeratorAssessment }
   | { type: "debate_complete"; outcome: "consensus" | "branched" };
 
@@ -266,6 +281,8 @@ export class DebateEngine {
   private onProgress?: (event: DebateProgressEvent) => void;
   private totalTokens = 0;
   private usage: LLMUsage = emptyUsage();
+  private nodeId: string;
+  private toolBroker?: Pick<ToolBroker, "resolveRoundRequests">;
 
   constructor(config: DebateEngineConfig) {
     this.openai = config.openai;
@@ -275,16 +292,20 @@ export class DebateEngine {
     this.maxBranching = config.maxBranching;
     this.dryRun = config.dryRun ?? false;
     this.onProgress = config.onProgress;
+    this.nodeId = config.nodeId ?? "unknown-node";
+    this.toolBroker = config.toolBroker;
   }
 
   async runDebate(
     phase: TreePhase,
-    context: NodeContext,
+    initialContext: NodeContext,
     participatingAgents: AgentRole[]
   ): Promise<DebateTranscript> {
+    let context = initialContext;
     const rounds: DebateRound[] = [];
     let allMessages: DebateMessage[] = [];
     const accumulatedContextUpdates: Partial<NodeContext> = {};
+    const accumulatedToolRequests: ToolRequest[] = [];
     let compactState = initialCompactState(context);
 
     for (let roundNum = 1; roundNum <= this.maxRounds; roundNum++) {
@@ -292,6 +313,7 @@ export class DebateEngine {
 
       const roundMessages: DebateMessage[] = [];
       const roundAlternatives: Alternative[] = [];
+      const roundToolRequests: IncomingToolRequest[] = [];
 
       for (const agentRole of participatingAgents) {
         this.onProgress?.({ type: "agent_speaking", agent: agentRole, round: roundNum });
@@ -315,6 +337,12 @@ export class DebateEngine {
         if (parsed.contextUpdates) {
           mergeContextUpdates(accumulatedContextUpdates, parsed.contextUpdates);
         }
+
+        const requestedTools: IncomingToolRequest[] = (parsed.toolRequests ?? []).map((request) => ({
+          ...request,
+          requestedBy: agentRole,
+        }));
+        roundToolRequests.push(...requestedTools);
 
         const message: DebateMessage = {
           role: agentRole,
@@ -348,6 +376,40 @@ export class DebateEngine {
         });
       }
 
+      if (this.toolBroker && roundToolRequests.length > 0) {
+        const resolved = await this.toolBroker.resolveRoundRequests({
+          nodeId: this.nodeId,
+          roundNumber: roundNum,
+          requests: roundToolRequests,
+          existingRequests: accumulatedToolRequests,
+          existingEvidence: context.toolEvidence ?? [],
+        });
+        accumulatedToolRequests.push(...resolved.requests);
+
+        if (resolved.evidence.length > 0) {
+          context = {
+            ...context,
+            toolEvidence: [...(context.toolEvidence ?? []), ...resolved.evidence],
+          };
+          mergeContextUpdates(accumulatedContextUpdates, { toolEvidence: context.toolEvidence });
+
+          const evidenceRollup = rollupToolEvidence(context.toolEvidence);
+          compactState = {
+            ...compactState,
+            ...evidenceRollup,
+          };
+        }
+
+        this.onProgress?.({
+          type: "tools_resolved",
+          round: roundNum,
+          requested: roundToolRequests.length,
+          completed: resolved.requests.filter((request) => request.status === "completed").length,
+          skipped: resolved.requests.filter((request) => request.status === "skipped").length,
+          failed: resolved.requests.filter((request) => request.status === "failed").length,
+        });
+      }
+
       const assessment = await this.assessRound(
         roundNum,
         roundMessages,
@@ -370,12 +432,12 @@ export class DebateEngine {
 
       if (assessment.outcome === "consensus") {
         this.onProgress?.({ type: "debate_complete", outcome: "consensus" });
-        return { rounds, finalOutcome: "consensus", summary: assessment.summary, tokenUsage: this.totalTokens, llmUsage: this.llmUsage, contextUpdates: accumulatedContextUpdates, compactState };
+        return { rounds, finalOutcome: "consensus", summary: assessment.summary, tokenUsage: this.totalTokens, llmUsage: this.llmUsage, contextUpdates: accumulatedContextUpdates, compactState, toolRequests: accumulatedToolRequests };
       }
 
       if (assessment.outcome === "diverging") {
         this.onProgress?.({ type: "debate_complete", outcome: "branched" });
-        return { rounds, finalOutcome: "branched", summary: assessment.summary, tokenUsage: this.totalTokens, llmUsage: this.llmUsage, contextUpdates: accumulatedContextUpdates, compactState };
+        return { rounds, finalOutcome: "branched", summary: assessment.summary, tokenUsage: this.totalTokens, llmUsage: this.llmUsage, contextUpdates: accumulatedContextUpdates, compactState, toolRequests: accumulatedToolRequests };
       }
     }
 
@@ -388,6 +450,7 @@ export class DebateEngine {
       llmUsage: this.llmUsage,
       contextUpdates: accumulatedContextUpdates,
       compactState,
+      toolRequests: accumulatedToolRequests,
     };
   }
 
@@ -399,6 +462,10 @@ export class DebateEngine {
     compactState: CompactDebateState
   ): Promise<ModeratorAssessment> {
     const transcript = compactMessages(roundMessages);
+    const toolEvidenceSection = renderToolEvidenceForPrompt(
+      context.toolEvidence,
+      context.toolEvidence?.length ?? 0
+    );
 
     const alternativesSummary =
       alternatives.length > 0
@@ -428,6 +495,9 @@ ${context.branchDecision ? `Branch decision: ${context.branchDecision}` : ""}
 ${decompositionFrame}${lockedSection}
 ## Compact Prior Debate State
 ${renderCompactForModerator(compactState)}
+
+## Current Tool Evidence
+${toolEvidenceSection || "(none)"}
 
 ## Current Round Transcript
 ${transcript}
@@ -511,6 +581,12 @@ ${isLastRound ? "\n⚠️ THIS IS THE FINAL ROUND. You MUST choose consensus or 
 ALTERNATIVE [Approach A]: Lean, pragmatic path optimised for speed of delivery — RATIONALE: Fastest time to value with acceptable trade-offs.
 
 ALTERNATIVE [Approach B]: Robust path optimised for long-term flexibility — RATIONALE: Better fit if requirements expand later.`;
+    }
+
+    if (round === 1 && phase === "implementation" && agent === "developer") {
+      return `[DRY-RUN ${agent}] I need current docs before choosing the implementation detail.
+
+TOOL_REQUEST [docs-fetch]: official docs for implementation`;
     }
 
     return `[DRY-RUN ${agent}] I concur with the current direction. No new alternatives to surface this round.`;

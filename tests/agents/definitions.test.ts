@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { AGENT_DEFINITIONS, buildAgentPrompt, parseAgentResponse } from "../../src/agents/definitions.js";
 import { ToolEvidenceSchema, ToolRequestSchema } from "../../src/schemas/index.js";
 import { AGENT_ROLES, PHASE_AGENTS } from "../../src/types/index.js";
+import type { ToolEvidence } from "../../src/types/index.js";
 
 describe("parseAgentResponse", () => {
   it("extracts structured tool requests while keeping normal context updates", () => {
@@ -122,6 +123,44 @@ describe("buildAgentPrompt", () => {
     expect(system).toContain("TOOL_REQUEST [tool-name]: specific query or target");
     expect(user).toContain("## Tool Evidence");
     expect(user).toContain("buildAgentPrompt renders context sections.");
+  });
+
+  it("caps rendered tool evidence to the most recent items", () => {
+    const toolEvidence: ToolEvidence[] = Array.from({ length: 9 }, (_, index) => ({
+      id: `evidence-${index + 1}`,
+      requestId: `request-${index + 1}`,
+      toolName: "repo-search",
+      query: `query-${index + 1}`,
+      requestedBy: "developer",
+      additionalRequesters: [],
+      nodeId: "node-1",
+      roundNumber: 1,
+      summary: `Evidence summary ${index + 1}`,
+      findings: [`Finding ${index + 1}`],
+      decisionRelevance: [],
+      constraintsDiscovered: [],
+      risksDiscovered: [],
+      openQuestions: [],
+      sources: [],
+      limitations: [],
+      confidence: 0.8,
+      createdAt: "2026-05-02T00:00:01.000Z",
+    }));
+
+    const { user } = buildAgentPrompt(AGENT_DEFINITIONS["developer"], {
+      priorRoundsHistory: [],
+      currentRoundSoFar: [],
+      phase: "implementation",
+      roundNumber: 1,
+      context: {
+        originalIntent: "Add tool support",
+        ancestorSummaries: [],
+        toolEvidence,
+      },
+    });
+
+    expect(user).not.toContain("Evidence summary 1");
+    expect(user).toContain("Evidence summary 9");
   });
 
   it("uses compact debate state instead of full prior transcript when provided", () => {

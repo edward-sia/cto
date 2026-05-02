@@ -48,6 +48,8 @@ Rules:
 - If Tool Evidence conflicts with prior assumptions, update your position.
 - If evidence is missing or limited, label the claim UNKNOWN.`;
 
+const DEFAULT_TOOL_EVIDENCE_PROMPT_LIMIT = 8;
+
 const formatBoundaryList = (items: string[]) => items.map((item) => `- ${item}`).join("\n");
 
 function withBoundaries(
@@ -987,7 +989,7 @@ ${decomp.feasibilityFlags.map((f) => `- ${f}`).join("\n") || "- (none)"}`
     : "";
   const toolEvidenceSection = renderToolEvidenceForPrompt(
     input.context.toolEvidence,
-    input.context.toolEvidence?.length ?? 0
+    DEFAULT_TOOL_EVIDENCE_PROMPT_LIMIT
   );
 
   const contextSummary = [

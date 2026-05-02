@@ -41,6 +41,30 @@ describe("tool evidence rendering", () => {
     expect(rendered).toContain("Limitations");
   });
 
+  it("renders nothing when the evidence limit is zero", () => {
+    expect(renderToolEvidenceForPrompt([evidence], 0)).toBe("");
+  });
+
+  it("normalizes duplicate and empty list values before rendering", () => {
+    const rendered = renderToolEvidenceForPrompt(
+      [
+        {
+          ...evidence,
+          findings: [
+            "Repeatable\noptions   can collect values.",
+            "  ",
+            "Repeatable options can collect values.",
+          ],
+        },
+      ],
+      1
+    );
+
+    expect(rendered.match(/- Repeatable options can collect values\./g)).toHaveLength(1);
+    expect(rendered).not.toContain("Repeatable\noptions");
+    expect(rendered).not.toContain("- \n");
+  });
+
   it("rolls evidence into compact debate fields", () => {
     const rollup = rollupToolEvidence([evidence]);
 

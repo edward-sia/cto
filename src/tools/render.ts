@@ -11,7 +11,10 @@ export function renderToolEvidenceForPrompt(
   evidence: ToolEvidence[] | undefined,
   maxItems: number
 ): string {
-  const items = (evidence ?? []).slice(-Math.max(0, maxItems));
+  const limit = Number.isFinite(maxItems) ? Math.floor(maxItems) : 0;
+  if (limit <= 0) return "";
+
+  const items = (evidence ?? []).slice(-limit);
   if (items.length === 0) return "";
 
   const lines = ["## Tool Evidence", ""];
@@ -50,11 +53,16 @@ export function rollupToolEvidence(evidence: ToolEvidence[] | undefined): ToolEv
 }
 
 function appendList(lines: string[], label: string, values: string[]): void {
-  if (values.length === 0) return;
+  const normalizedValues = uniqueFlat(values);
+  if (normalizedValues.length === 0) return;
   lines.push(`${label}:`);
-  for (const value of values) lines.push(`- ${value}`);
+  for (const value of normalizedValues) lines.push(`- ${value}`);
 }
 
 function uniqueFlat(values: string[]): string[] {
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+  return [...new Set(values.map(normalizePromptListValue).filter(Boolean))];
+}
+
+function normalizePromptListValue(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
 }

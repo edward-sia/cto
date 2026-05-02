@@ -51,13 +51,12 @@ function parsePositiveInteger(value: string): number | undefined {
 
 function parseToolAllowlist(value: string): NonNullable<RunConfig["toolUse"]>["allowlist"] {
   const requested = value.split(",").map((item) => item.trim()).filter(Boolean);
+  const valid = new Set<string>([...TOOL_NAMES, "all-readonly"]);
+  const invalid = requested.filter((item) => !valid.has(item));
+  if (invalid.length > 0) throw new Error(`Unknown tool(s): ${invalid.join(", ")}`);
   if (requested.includes("all-readonly")) {
     return [...TOOL_NAMES];
   }
-
-  const valid = new Set<string>(TOOL_NAMES);
-  const invalid = requested.filter((item) => !valid.has(item));
-  if (invalid.length > 0) throw new Error(`Unknown tool(s): ${invalid.join(", ")}`);
   return requested as NonNullable<RunConfig["toolUse"]>["allowlist"];
 }
 

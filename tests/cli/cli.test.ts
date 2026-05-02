@@ -119,6 +119,46 @@ describe("CLI", () => {
     expect(output).toContain("--no-tools");
   });
 
+  it("rejects unknown tools even when all-readonly is present", () => {
+    type ExecFileError = Error & {
+      status?: number;
+      stderr?: string | Buffer;
+    };
+
+    let error: ExecFileError | undefined;
+
+    try {
+      execFileSync(
+        "npx",
+        [
+          "tsx",
+          "src/cli/index.ts",
+          "run",
+          "Build a REST API",
+          "--dry-run",
+          "--depth",
+          "1",
+          "--rounds",
+          "1",
+          "--tools",
+          "all-readonly,not-a-tool",
+        ],
+        {
+          cwd: process.cwd(),
+          encoding: "utf-8",
+          env: { ...process.env, FORCE_COLOR: "0" },
+          stdio: ["ignore", "pipe", "pipe"],
+        }
+      );
+    } catch (err) {
+      error = err instanceof Error ? err as ExecFileError : undefined;
+    }
+
+    expect(error).toBeDefined();
+    expect(error?.status).toBeGreaterThan(0);
+    expect(error?.stderr?.toString()).toContain("Unknown tool(s): not-a-tool");
+  });
+
   it("uses provider-specific default models in dry-run mode", () => {
     const output = execFileSync(
       "npx",

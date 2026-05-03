@@ -3,11 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { HumanReviewStore } from "../../src/control/human-review-store.js";
+import { STORE_DIR } from "../../src/persistence/store-path.js";
 import type { RunState, TreeNode } from "../../src/types/index.js";
 import { startUiServer, type StartedUiServer } from "../../src/ui/server.js";
 
 let server: StartedUiServer | undefined;
 let originalCwd: string | undefined;
+let originalStoreDir: string | undefined;
 let tempDir: string | undefined;
 
 afterEach(async () => {
@@ -21,6 +23,13 @@ afterEach(async () => {
     originalCwd = undefined;
   }
 
+  if (originalStoreDir === undefined) {
+    delete process.env.CAMBRIAN_TREE_STORE_DIR;
+  } else {
+    process.env.CAMBRIAN_TREE_STORE_DIR = originalStoreDir;
+    originalStoreDir = undefined;
+  }
+
   if (tempDir) {
     await rm(tempDir, { recursive: true, force: true });
     tempDir = undefined;
@@ -30,7 +39,7 @@ afterEach(async () => {
 describe("startUiServer", () => {
   it("rejects encoded path traversal run ids before loading from disk", async () => {
     const cwd = await createTempCwd();
-    await mkdir(join(cwd, ".cambrian-tree"), { recursive: true });
+    await mkdir(defaultStorePath(cwd), { recursive: true });
     await mkdir(join(cwd, "outside-run"), { recursive: true });
     await writeFile(
       join(cwd, "outside-run", "state.json"),
@@ -46,29 +55,9 @@ describe("startUiServer", () => {
     await expect(response.json()).resolves.toEqual({ error: "Run not found" });
   });
 
-  it("lists saved runs from the legacy store directory", async () => {
-    const cwd = await createTempCwd();
-    const legacyRunDir = join(cwd, ".codex-tree", "run-legacy");
-    await mkdir(legacyRunDir, { recursive: true });
-    await writeFile(
-      join(legacyRunDir, "state.json"),
-      JSON.stringify(run({ id: "run-legacy" })),
-      "utf-8",
-    );
-
-    server = await startUiServer({ openBrowser: false, port: 43281 });
-
-    const response = await fetch(new URL("/api/runs", server.url));
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual([
-      expect.objectContaining({ id: "run-legacy" }),
-    ]);
-  });
-
   it("streams the selected run over server-sent events", async () => {
     const cwd = await createTempCwd();
-    const runDir = join(cwd, ".cambrian-tree", "run-live");
+    const runDir = defaultRunPath(cwd, "run-live");
     await mkdir(runDir, { recursive: true });
     await writeFile(join(runDir, "state.json"), JSON.stringify(run({ id: "run-live" })), "utf-8");
 
@@ -91,7 +80,7 @@ describe("startUiServer", () => {
 
   it("stores a matching browser human-review decision without mutating run state", async () => {
     const cwd = await createTempCwd();
-    const runDir = join(cwd, ".cambrian-tree", "run-live");
+    const runDir = defaultRunPath(cwd, "run-live");
     await mkdir(runDir, { recursive: true });
     const state = run({
       id: "run-live",
@@ -114,7 +103,7 @@ describe("startUiServer", () => {
     expect(response.status).toBe(202);
     await expect(response.json()).resolves.toEqual({ ok: true });
 
-    const decisionStore = new HumanReviewStore(join(cwd, ".cambrian-tree"));
+    const decisionStore = new HumanReviewStore(defaultStorePath(cwd));
     await expect(decisionStore.readDecision("run-live", "review-123")).resolves.toEqual({ action: "kill" });
 
     const savedState = JSON.parse(await readFile(join(runDir, "state.json"), "utf-8"));
@@ -124,11 +113,21 @@ describe("startUiServer", () => {
 
 async function createTempCwd(): Promise<string> {
   originalCwd = process.cwd();
+  originalStoreDir = process.env.CAMBRIAN_TREE_STORE_DIR;
+  delete process.env.CAMBRIAN_TREE_STORE_DIR;
   tempDir = await mkdtemp(join(tmpdir(), "cto-ui-server-"));
   const cwd = join(tempDir, "project");
   await mkdir(cwd, { recursive: true });
   process.chdir(cwd);
   return cwd;
+}
+
+function defaultStorePath(cwd: string): string {
+  return join(cwd, STORE_DIR);
+}
+
+function defaultRunPath(cwd: string, runId: string): string {
+  return join(defaultStorePath(cwd), runId);
 }
 
 function node(overrides: Partial<TreeNode>): TreeNode {

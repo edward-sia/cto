@@ -73,7 +73,7 @@ flowchart TD
 
 ## Saved-Run UI
 
-`cto ui` is a local-only viewer for persisted run state. It does not participate in orchestration; it reads `.cambrian-tree/<run-id>/state.json` through the same file-store boundary used by the CLI.
+`cto ui` is a local-only viewer for persisted run state. It does not participate in orchestration; it reads `.cambrian-tree/<run-id>/state.json` through the same file-store boundary used by the CLI. Set `CAMBRIAN_TREE_STORE_DIR` to point that boundary at an alternate store, which is how the test harness keeps unit-test runs out of the real saved-run history.
 
 ```mermaid
 flowchart LR
@@ -92,6 +92,8 @@ The UI prefers fitness scores when present, while still exposing the underlying 
 - `src/ui/run-summary.ts` — turns `RunState` into saved-run list rows.
 - `src/ui/inspector.ts` — maps a selected `TreeNode` into summary/debate/context/leaf inspector sections.
 - `src/ui/server.ts` — serves the UI and JSON routes using Node built-ins.
+
+The SVG canvas draws edges from each visible parent node to each immediate visible child node, so consensus chains and branching alternatives both reflect the rendered depth-by-depth tree structure.
 
 Run IDs are validated before loading state so encoded path separators cannot escape the `.cambrian-tree/<run-id>/state.json` namespace.
 
@@ -276,6 +278,7 @@ src/
 ├── judge/fitness.ts          # Evidence-aware deterministic fitness scoring
 ├── verification/runner.ts    # Post-leaf verification command runner
 ├── persistence/file-store.ts # FileStore — .cambrian-tree/<run-id>/state.json
+├── persistence/store-path.ts # Store path resolution and CAMBRIAN_TREE_STORE_DIR override
 └── ui/                       # Local saved-run browser UI
     ├── server.ts             # HTTP server + JSON API routes
     ├── page.ts               # Dependency-free browser app shell

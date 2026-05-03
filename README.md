@@ -376,6 +376,8 @@ If a required verification command fails, the fitness composite is capped so a p
 
 Runs are saved to `.cambrian-tree/<run-id>/state.json` after every node. The tree is always resumable from the last completed node.
 
+Set `CAMBRIAN_TREE_STORE_DIR` to point persistence at a different run store. This is mainly useful for tests, local experiments, and tooling that should not read or write the default `.cambrian-tree` history.
+
 Run state records the selected run mode, selected agents, leaf IDs, ranked results for implementation runs, LLM usage, aggregate Codex usage, cache stats, model tier assignments, and any pending browser review request. Node context records the original intent, intent decomposition, intent dossier, verified domain facts, PRD notes, acceptance criteria, architecture decisions, implementation specs, test strategy, branch decisions, human revision prompts, and ancestor summaries.
 
 Implementation leaves may also record an implementation sketch, sketch score, and skipped execution reason. Skipped leaves are not failures or pruned branches; they are candidates preserved after sketch ranking so the run can explain why Codex execution was narrowed.

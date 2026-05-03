@@ -174,6 +174,7 @@ npx tsx src/cli/index.ts resume <run-id>  # Resume
 ## Environment Variables
 
 - `OPENAI_API_KEY` — required for all LLM calls
+- `CAMBRIAN_TREE_STORE_DIR` — optional override for the run-state store; Vitest sets this to a temporary directory so tests do not pollute real `.cambrian-tree` runs
 - Codex CLI must be installed and authenticated (`npm install -g @openai/codex && codex login`)
 
 ## Testing
@@ -183,10 +184,13 @@ Use vitest. Current coverage includes saved-run UI helpers and server behavior:
 - `src/ui/run-summary.ts`
 - `src/ui/inspector.ts`
 - `src/ui/server.ts`
+- persistence store path behavior in `tests/persistence/file-store.test.ts`
 - interactive plan gate behavior in `tests/orchestrator/orchestrator.test.ts`
 - prompt propagation for human revisions in `tests/agents/definitions.test.ts`, `tests/execution/codex-client.test.ts`, and `tests/synthesis/synthesizer.test.ts`
 - intent decomposition/dossier, pruning schedule parsing, verification runner, fitness scoring, and fitness-aware UI summaries
 - documentation drift guard behavior in `tests/docs/impact-check.test.ts`
+
+`tests/setup.ts` assigns `CAMBRIAN_TREE_STORE_DIR` to a throwaway temp directory for every Vitest run, including CLI subprocess tests that inherit the environment.
 
 When adding more:
 - Unit tests for `parseAgentResponse`, `buildAgentPrompt`, moderator JSON parsing

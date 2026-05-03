@@ -16,10 +16,11 @@ afterEach(async () => {
 describe("HumanReviewStore", () => {
   it("waits for a browser-submitted decision file", async () => {
     tempDir = await mkdtemp(join(tmpdir(), "cto-human-review-"));
-    const store = new HumanReviewStore(join(tempDir, ".cambrian-tree"));
+    const storeDir = join(tempDir, "runs");
+    const store = new HumanReviewStore(storeDir);
     const waiting = store.waitForDecision("run-live", "review-123", { pollMs: 5 });
 
-    await mkdir(join(tempDir, ".cambrian-tree", "run-live"), { recursive: true });
+    await mkdir(join(storeDir, "run-live"), { recursive: true });
     await store.writeDecision("run-live", "review-123", {
       action: "revise",
       prompt: "Prefer the streaming-first plan.",
@@ -33,7 +34,7 @@ describe("HumanReviewStore", () => {
 
   it("rejects invalid decision payloads", async () => {
     tempDir = await mkdtemp(join(tmpdir(), "cto-human-review-"));
-    const store = new HumanReviewStore(join(tempDir, ".cambrian-tree"));
+    const store = new HumanReviewStore(join(tempDir, "runs"));
 
     await expect(
       store.writeDecision("run-live", "review-123", {

@@ -61,7 +61,7 @@ flowchart TD
 
 ## Saved-Run UI
 
-`cto ui` is a local-only viewer for persisted run state. It does not participate in orchestration; it reads `.cambrian-tree/<run-id>/state.json` through the same file-store boundary used by the CLI.
+`cto ui` is a local-only viewer for persisted run state. It does not participate in orchestration; it reads `.cambrian-tree/<run-id>/state.json` through the same file-store boundary used by the CLI. Set `CAMBRIAN_TREE_STORE_DIR` to point that boundary at an alternate store, which is how the test harness keeps unit-test runs out of the real saved-run history.
 
 ```mermaid
 flowchart LR
@@ -240,7 +240,8 @@ src/
 ├── orchestrator/orchestrator.ts  # TreeOrchestrator — main loop, interactive gate, SIGINT, token budget
 ├── execution/codex-client.ts # CodexExecutor — SDK + CLI fallback
 ├── judge/judge.ts            # Judge — LLM scoring
-├── persistence/file-store.ts # FileStore — .cambrian-tree/<run-id>/state.json
+├── persistence/file-store.ts # FileStore — persisted RunState JSON
+├── persistence/store-path.ts # Store path resolution and CAMBRIAN_TREE_STORE_DIR override
 └── ui/                       # Local saved-run browser UI
     ├── server.ts             # HTTP server + JSON API routes
     ├── page.ts               # Dependency-free browser app shell

@@ -7,17 +7,13 @@ import { readFile, writeFile, mkdir, readdir, rename } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { RunState } from "../types/index.js";
-
-const STORE_DIR = ".cambrian-tree";
-const LEGACY_STORE_DIR = ".codex-tree";
+import { resolveStoreDir } from "./store-path.js";
 
 export class FileStore {
   private baseDir: string;
-  private legacyBaseDir?: string;
 
   constructor(baseDir?: string) {
-    this.baseDir = baseDir ?? join(process.cwd(), STORE_DIR);
-    this.legacyBaseDir = baseDir ? undefined : join(process.cwd(), LEGACY_STORE_DIR);
+    this.baseDir = resolveStoreDir(baseDir);
   }
 
   async save(state: RunState): Promise<void> {
@@ -30,10 +26,7 @@ export class FileStore {
   }
 
   async load(runId: string): Promise<RunState | null> {
-    const state = await this.loadFrom(this.baseDir, runId);
-    if (state) return state;
-    if (this.legacyBaseDir) return this.loadFrom(this.legacyBaseDir, runId);
-    return null;
+    return this.loadFrom(this.baseDir, runId);
   }
 
   private async loadFrom(baseDir: string, runId: string): Promise<RunState | null> {
@@ -48,7 +41,6 @@ export class FileStore {
   async listRuns(): Promise<Array<{ id: string; intent: string; status: string; startedAt: string }>> {
     const runsById = new Map<string, { id: string; intent: string; status: string; startedAt: string }>();
     await this.collectRuns(this.baseDir, runsById);
-    if (this.legacyBaseDir) await this.collectRuns(this.legacyBaseDir, runsById);
     return [...runsById.values()].sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
   }
 

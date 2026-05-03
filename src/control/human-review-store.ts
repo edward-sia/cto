@@ -1,8 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { HumanPlanDecision } from "../types/index.js";
+import { resolveStoreDir } from "../persistence/store-path.js";
 
-const STORE_DIR = ".cambrian-tree";
 const POLL_MS = 250;
 const SAFE_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
@@ -11,7 +11,7 @@ export interface WaitForDecisionOptions {
 }
 
 export class HumanReviewStore {
-  constructor(private readonly baseDir = join(process.cwd(), STORE_DIR)) {}
+  constructor(private readonly baseDir = resolveStoreDir()) {}
 
   async writeDecision(runId: string, requestId: string, decision: HumanPlanDecision): Promise<void> {
     const parsed = parseHumanPlanDecision(decision);

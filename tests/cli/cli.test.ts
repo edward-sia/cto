@@ -163,7 +163,8 @@ describe("CLI", () => {
 
   it("clears saved tool allowlist when resuming with no-tools", () => {
     const runId = `cli-no-tools-${Date.now()}`;
-    const runDir = join(process.cwd(), ".cambrian-tree", runId);
+    const runStoreDir = process.env.CAMBRIAN_TREE_STORE_DIR ?? join(process.cwd(), ".cambrian-tree");
+    const runDir = join(runStoreDir, runId);
     const statePath = join(runDir, "state.json");
 
     mkdirSync(runDir, { recursive: true });

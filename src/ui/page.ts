@@ -530,26 +530,15 @@ function css(): string {
       stroke-linecap: round;
       stroke-dasharray: 8 10;
       fill: none;
-      filter: drop-shadow(0 0 4px rgba(var(--signal-rgb), 0.36));
       animation: branchFlow 4.8s linear infinite;
     }
 
-    .edge-status-pruned,
-    .edge-status-failed {
-      stroke: rgba(255, 77, 115, 0.62);
-      stroke-dasharray: 2 9;
+    .edge.edge-underlay {
+      stroke: rgba(119, 149, 190, 0.26);
+      stroke-width: 5.5;
+      stroke-dasharray: 8 10;
+      opacity: 0.72;
       filter: none;
-    }
-
-    .edge-status-consensus,
-    .edge-status-scored,
-    .edge-status-completed {
-      stroke: rgba(0, 215, 167, 0.62);
-    }
-
-    .edge-human-revision {
-      stroke: rgba(255, 139, 209, 0.76);
-      filter: drop-shadow(0 0 4px rgba(255, 139, 209, 0.28));
     }
 
     .node-card {
@@ -1617,11 +1606,16 @@ function clientScript(): string {
     refs.svg.appendChild(nodeLayer);
 
     state.layout.edges.forEach(function (edge) {
+      var d = edgePath(edge);
+
+      var underlay = svgEl("path");
+      underlay.setAttribute("class", "edge edge-underlay");
+      underlay.setAttribute("d", d);
+      edgeLayer.appendChild(underlay);
+
       var path = svgEl("path");
-      var midX = edge.x1 + (edge.x2 - edge.x1) / 2;
-      var child = findNode(state.run.root, edge.toId, true);
-      path.setAttribute("class", edgeClassName(child));
-      path.setAttribute("d", "M " + edge.x1 + " " + edge.y1 + " C " + midX + " " + edge.y1 + " " + midX + " " + edge.y2 + " " + edge.x2 + " " + edge.y2);
+      path.setAttribute("class", "edge");
+      path.setAttribute("d", d);
       edgeLayer.appendChild(path);
     });
 
@@ -2179,11 +2173,10 @@ function clientScript(): string {
         nextLeafY += NODE_HEIGHT + ROW_GAP;
       }
 
-      var depth = typeof node.depth === "number" ? node.depth : fallbackDepth;
       var layoutNode = {
         id: node.id,
-        depth: depth,
-        x: MARGIN + depth * (NODE_WIDTH + COLUMN_GAP),
+        depth: fallbackDepth,
+        x: MARGIN + fallbackDepth * (NODE_WIDTH + COLUMN_GAP),
         y: y,
         width: NODE_WIDTH,
         height: NODE_HEIGHT
@@ -2216,6 +2209,8 @@ function clientScript(): string {
         }
         edges.push({
           id: layoutNode.id + "->" + child.id,
+          fromId: layoutNode.id,
+          toId: child.id,
           x1: layoutNode.x + NODE_WIDTH,
           y1: layoutNode.y + NODE_HEIGHT / 2,
           x2: childLayout.x,
@@ -2232,6 +2227,11 @@ function clientScript(): string {
     }, MARGIN) + MARGIN;
 
     return { nodes: nodes, edges: edges, width: width, height: height };
+  }
+
+  function edgePath(edge) {
+    var midX = edge.x1 + (edge.x2 - edge.x1) / 2;
+    return "M " + edge.x1 + "," + edge.y1 + " C " + midX + "," + edge.y1 + " " + midX + "," + edge.y2 + " " + edge.x2 + "," + edge.y2;
   }
 
   function fitCanvas() {
@@ -2624,17 +2624,6 @@ function clientScript(): string {
       classes.push("node-human-revision");
     }
 
-    return classes.join(" ");
-  }
-
-  function edgeClassName(node) {
-    var classes = ["edge"];
-    if (node && node.status) {
-      classes.push("edge-status-" + classToken(node.status));
-    }
-    if (node && isHumanRevision(node)) {
-      classes.push("edge-human-revision");
-    }
     return classes.join(" ");
   }
 

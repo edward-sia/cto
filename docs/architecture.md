@@ -81,6 +81,8 @@ The UI keeps browser-specific behavior isolated in `src/ui/page.ts`, while testa
 - `src/ui/inspector.ts` — maps a selected `TreeNode` into summary/debate/context/leaf inspector sections.
 - `src/ui/server.ts` — serves the UI and JSON routes using Node built-ins.
 
+The SVG canvas draws edges from each visible parent node to each immediate visible child node, so consensus chains and branching alternatives both reflect the rendered depth-by-depth tree structure.
+
 Run IDs are validated before loading state so encoded path separators cannot escape the `.cambrian-tree/<run-id>/state.json` namespace.
 
 ## Node State Machine

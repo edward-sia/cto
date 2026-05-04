@@ -13,6 +13,11 @@
 import type { DomainFacts } from "../ground-truth/types.js";
 export type { DomainFacts };
 
+import type {
+  CriticChoiceEvaluation,
+  CriticCoverageAudit,
+  CoverageDimension,
+} from "../critic/types.js";
 export type {
   CriticChoiceEvaluation,
   CriticCoverageAudit,
@@ -132,6 +137,7 @@ export interface Alternative {
   rationale: string;
   confidence: number;
   relevanceToIntent: number;
+  criticEvaluation?: CriticChoiceEvaluation;
 }
 
 export interface CompactDebateAlternative {
@@ -209,6 +215,7 @@ export interface IntentDossier {
   knownUnknowns: string[];
   successSignals: string[];
   failureModes: string[];
+  requiredCoverageDimensions: CoverageDimension[];
 }
 
 export interface VerificationCommand {
@@ -340,6 +347,7 @@ export interface NodeContext {
   implementationSpec?: string;
   testStrategy?: string;
   ancestorSummaries: string[];
+  coverageAudit?: CriticCoverageAudit;
 }
 
 export interface LLMUsage {
@@ -416,6 +424,7 @@ export interface LeafImplementationSketch {
   estimatedComplexity: "low" | "medium" | "high";
   confidence: number;
   rationale: string;
+  criticEvaluation: CriticChoiceEvaluation;
 }
 
 export interface LeafSketchScore {

@@ -41,6 +41,7 @@ function fallbackDossier(intent: string, decomposition: IntentDecomposition): In
     knownUnknowns: decomposition.knownUnknowns,
     successSignals: ["Implementation matches the intent and verification checks pass."],
     failureModes: ["Implementation drifts from the original intent."],
+    requiredCoverageDimensions: [],
   };
 }
 

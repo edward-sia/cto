@@ -145,6 +145,13 @@ Return JSON:
       estimatedComplexity: node.branchLabel.toLowerCase().includes("robust") ? "high" : "medium",
       confidence: node.branchLabel.toLowerCase().includes("approach a") ? 0.82 : 0.7,
       rationale: "[dry-run] Synthetic sketch used for ranking without LLM calls.",
+      criticEvaluation: {
+        reversibility: { value: "reversible-with-effort" as const, note: "[dry-run placeholder]" },
+        blastRadius: { value: "medium" as const, note: "[dry-run placeholder]" },
+        timeToSignal: { value: "medium" as const, note: "[dry-run placeholder]" },
+        counterCase: "[dry-run placeholder counter-case]",
+        falsifier: "[dry-run placeholder falsifier]",
+      },
     };
   }
 

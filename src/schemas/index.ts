@@ -13,9 +13,9 @@ const axisValueSchema = <T extends [string, ...string[]]>(values: T) =>
   });
 
 export const CriticChoiceEvaluationSchema = z.object({
-  reversibility: axisValueSchema([...REVERSIBILITY_VALUES] as [string, ...string[]]),
-  blastRadius: axisValueSchema([...BLAST_RADIUS_VALUES] as [string, ...string[]]),
-  timeToSignal: axisValueSchema([...TIME_TO_SIGNAL_VALUES] as [string, ...string[]]),
+  reversibility: z.object({ value: z.enum(REVERSIBILITY_VALUES), note: z.string().min(1) }),
+  blastRadius: z.object({ value: z.enum(BLAST_RADIUS_VALUES), note: z.string().min(1) }),
+  timeToSignal: z.object({ value: z.enum(TIME_TO_SIGNAL_VALUES), note: z.string().min(1) }),
   counterCase: z.string().min(1),
   falsifier: z.string().min(1),
 });
@@ -32,6 +32,13 @@ export const CriticCoverageAuditSchema = z.object({
   followUpRoundFired: z.boolean().default(false),
 });
 
+export const CoverageDimensionSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  description: z.string().default(""),
+  source: z.enum(["fixed-core", "intent-derived"]).default("intent-derived"),
+});
+
 export const AlternativeSchema = z.object({
   id: z.string(),
   label: z.string(),
@@ -41,6 +48,7 @@ export const AlternativeSchema = z.object({
   rationale: z.string(),
   confidence: z.number().min(0).max(1).default(0.5),
   relevanceToIntent: z.number().min(0).max(1).default(0.5),
+  criticEvaluation: CriticChoiceEvaluationSchema.optional(),
 });
 
 export const CompactDebateAlternativeSchema = z.object({
@@ -97,6 +105,7 @@ export const IntentDossierSchema = z.object({
   knownUnknowns: z.array(z.string()).default([]),
   successSignals: z.array(z.string()).default([]),
   failureModes: z.array(z.string()).default([]),
+  requiredCoverageDimensions: z.array(CoverageDimensionSchema).default([]),
 });
 
 export const VerificationCommandSchema = z.object({
@@ -201,6 +210,7 @@ export const LeafImplementationSketchSchema = z.object({
   estimatedComplexity: z.enum(["low", "medium", "high"]).default("medium"),
   confidence: z.number().min(0).max(1).default(0.5),
   rationale: z.string().default(""),
+  criticEvaluation: CriticChoiceEvaluationSchema,
 });
 
 export const LeafSketchScoreSchema = z.object({

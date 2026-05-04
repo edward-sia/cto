@@ -22,6 +22,7 @@ import type {
   DomainFacts,
   HumanPlanDecision,
   CacheStats,
+  CriticCoverageAudit,
 } from "../types/index.js";
 import { PHASE_AGENTS } from "../types/index.js";
 import { addUsage, emptyUsage } from "../utils/usage.js";
@@ -625,8 +626,9 @@ export class TreeOrchestrator {
 
   private async runCoverageAudit(node: TreeNode, summary: string): Promise<void> {
     if (this.config.dryRun) return;
+    if (node.context.coverageAudit) return;
 
-    let audit;
+    let audit: CriticCoverageAudit;
     try {
       audit = await this.critic.auditCoverage(node.context, summary, false);
     } catch (error) {
@@ -649,9 +651,8 @@ export class TreeOrchestrator {
 
     this.runFollowUpRoundForGaps(node, audit.coverageGaps);
 
-    let reAudit;
     try {
-      reAudit = await this.critic.auditCoverage(node.context, summary, true);
+      node.context.coverageAudit = await this.critic.auditCoverage(node.context, summary, true);
     } catch (error) {
       this.callbacks.onError?.(node.id, error instanceof Error ? error : new Error(String(error)));
       node.context.coverageAudit = {
@@ -660,11 +661,7 @@ export class TreeOrchestrator {
         auditedAt: new Date().toISOString(),
         followUpRoundFired: true,
       };
-      this.accumulateLLMUsage(this.critic.llmUsage);
-      return;
     }
-
-    node.context.coverageAudit = reAudit;
     this.accumulateLLMUsage(this.critic.llmUsage);
   }
 

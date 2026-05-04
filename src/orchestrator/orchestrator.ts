@@ -586,10 +586,47 @@ export class TreeOrchestrator {
         return;
       }
 
-      node.status = "branched";
-      this.callbacks.onBranching?.(node.id, alternatives);
+      // Per-alternative Critic attack. Populate criticEvaluation on each
+      // surviving alternative; alternatives whose axes are uniformly bad
+      // are demoted instead of becoming subtrees.
+      if (!this.config.dryRun) {
+        for (const alt of alternatives) {
+          try {
+            alt.criticEvaluation = await this.critic.evaluateAlternative(alt, node.context);
+          } catch (error) {
+            this.callbacks.onError?.(node.id, error instanceof Error ? error : new Error(String(error)));
+          }
+        }
+        this.accumulateLLMUsage(this.critic.llmUsage);
+      }
 
-      for (const alt of alternatives) {
+      const surviving = alternatives.filter((alt) => {
+        const c = alt.criticEvaluation;
+        if (!c) return true;
+        const uniformlyBad =
+          c.reversibility.value === "one-way" &&
+          c.blastRadius.value === "high" &&
+          c.falsifier.trim().length === 0;
+        return !uniformlyBad;
+      });
+
+      if (surviving.length === 0) {
+        node.status = "consensus";
+        await this.runCoverageAudit(node, transcript.summary);
+        await this.processConsensusChild(node, transcript.summary, transcript.contextUpdates);
+        return;
+      }
+      if (surviving.length === 1) {
+        node.status = "consensus";
+        await this.runCoverageAudit(node, transcript.summary);
+        await this.processConsensusChild(node, transcript.summary, transcript.contextUpdates);
+        return;
+      }
+
+      node.status = "branched";
+      this.callbacks.onBranching?.(node.id, surviving);
+
+      for (const alt of surviving) {
         const childContext: NodeContext = {
           ...node.context,
           ...transcript.contextUpdates,

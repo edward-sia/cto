@@ -115,6 +115,7 @@ export interface OrchestratorCallbacks {
   onAnalysisComplete?: (analysis: TaskAnalysis) => void;
   onDebateProgress?: (nodeId: string, event: DebateProgressEvent) => void;
   onNodeCreated?: (node: TreeNode) => void;
+  /** Called with the post-demotion survivor set (after Critic attack), not the pre-attack alternatives list. */
   onBranching?: (parentId: string, alternatives: Alternative[]) => void;
   onPruned?: (parentId: string, prunedCount: number, threshold: number) => void;
   onLeafExecuting?: (nodeId: string) => void;
@@ -602,7 +603,13 @@ export class TreeOrchestrator {
 
       const surviving = alternatives.filter((alt) => {
         const c = alt.criticEvaluation;
+        // Fail-open: if the Critic attack failed (no evaluation attached),
+        // keep the alternative rather than dropping it on a transient error.
         if (!c) return true;
+        // The falsifier check is a forward-compat guard: today the schema
+        // enforces falsifier.min(1) so whitespace-only is the only way it
+        // can slip through. If the schema later relaxes, this still demotes
+        // alternatives that are one-way + high-blast with no falsifier signal.
         const uniformlyBad =
           c.reversibility.value === "one-way" &&
           c.blastRadius.value === "high" &&

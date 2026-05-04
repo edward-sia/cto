@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   CriticChoiceEvaluationSchema,
   CriticCoverageAuditSchema,
-  AxisValueEnumSchema,
 } from "../../src/schemas/index.js";
 
 describe("CriticChoiceEvaluation schema", () => {
@@ -18,16 +17,29 @@ describe("CriticChoiceEvaluation schema", () => {
     expect(parsed.blastRadius.note).toContain("checkout");
   });
 
-  it("rejects an invalid enum value", () => {
-    expect(() =>
-      CriticChoiceEvaluationSchema.parse({
-        reversibility: { value: "permanent", note: "" },
-        blastRadius: { value: "medium", note: "" },
-        timeToSignal: { value: "fast", note: "" },
-        counterCase: "x",
-        falsifier: "y",
-      })
-    ).toThrow();
+  it("rejects an invalid reversibility enum value", () => {
+    const result = CriticChoiceEvaluationSchema.safeParse({
+      reversibility: { value: "permanent", note: "n" },
+      blastRadius: { value: "medium", note: "n" },
+      timeToSignal: { value: "fast", note: "n" },
+      counterCase: "x",
+      falsifier: "y",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].path).toEqual(["reversibility", "value"]);
+    }
+  });
+
+  it("rejects an empty note on an axis", () => {
+    const result = CriticChoiceEvaluationSchema.safeParse({
+      reversibility: { value: "freely-reversible", note: "" },
+      blastRadius: { value: "medium", note: "n" },
+      timeToSignal: { value: "fast", note: "n" },
+      counterCase: "x",
+      falsifier: "y",
+    });
+    expect(result.success).toBe(false);
   });
 });
 

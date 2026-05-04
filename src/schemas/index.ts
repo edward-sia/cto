@@ -9,19 +9,13 @@ import {
 const axisValueSchema = <T extends [string, ...string[]]>(values: T) =>
   z.object({
     value: z.enum(values),
-    note: z.string().min(1).default(""),
+    note: z.string().min(1),
   });
 
-export const AxisValueEnumSchema = {
+export const CriticChoiceEvaluationSchema = z.object({
   reversibility: axisValueSchema([...REVERSIBILITY_VALUES] as [string, ...string[]]),
   blastRadius: axisValueSchema([...BLAST_RADIUS_VALUES] as [string, ...string[]]),
   timeToSignal: axisValueSchema([...TIME_TO_SIGNAL_VALUES] as [string, ...string[]]),
-};
-
-export const CriticChoiceEvaluationSchema = z.object({
-  reversibility: AxisValueEnumSchema.reversibility,
-  blastRadius: AxisValueEnumSchema.blastRadius,
-  timeToSignal: AxisValueEnumSchema.timeToSignal,
   counterCase: z.string().min(1),
   falsifier: z.string().min(1),
 });

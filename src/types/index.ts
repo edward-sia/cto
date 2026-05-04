@@ -13,6 +13,22 @@
 import type { DomainFacts } from "../ground-truth/types.js";
 export type { DomainFacts };
 
+export type {
+  CriticChoiceEvaluation,
+  CriticCoverageAudit,
+  CoverageGap,
+  CoverageDimension,
+  AxisValue,
+  Reversibility,
+  BlastRadius,
+  TimeToSignal,
+} from "../critic/types.js";
+export {
+  REVERSIBILITY_VALUES,
+  BLAST_RADIUS_VALUES,
+  TIME_TO_SIGNAL_VALUES,
+} from "../critic/types.js";
+
 // ─── Agent Roles ─────────────────────────────────────────────────────────────
 
 export const AGENT_ROLES = [

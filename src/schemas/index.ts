@@ -1,5 +1,42 @@
 import { z } from "zod";
 import { AGENT_ROLES, TOOL_NAMES } from "../types/index.js";
+import {
+  REVERSIBILITY_VALUES,
+  BLAST_RADIUS_VALUES,
+  TIME_TO_SIGNAL_VALUES,
+} from "../critic/types.js";
+
+const axisValueSchema = <T extends [string, ...string[]]>(values: T) =>
+  z.object({
+    value: z.enum(values),
+    note: z.string().min(1).default(""),
+  });
+
+export const AxisValueEnumSchema = {
+  reversibility: axisValueSchema([...REVERSIBILITY_VALUES] as [string, ...string[]]),
+  blastRadius: axisValueSchema([...BLAST_RADIUS_VALUES] as [string, ...string[]]),
+  timeToSignal: axisValueSchema([...TIME_TO_SIGNAL_VALUES] as [string, ...string[]]),
+};
+
+export const CriticChoiceEvaluationSchema = z.object({
+  reversibility: AxisValueEnumSchema.reversibility,
+  blastRadius: AxisValueEnumSchema.blastRadius,
+  timeToSignal: AxisValueEnumSchema.timeToSignal,
+  counterCase: z.string().min(1),
+  falsifier: z.string().min(1),
+});
+
+export const CoverageGapSchema = z.object({
+  dimension: z.string().min(1),
+  reason: z.string().min(1),
+});
+
+export const CriticCoverageAuditSchema = z.object({
+  coverageGaps: z.array(CoverageGapSchema).default([]),
+  premortem: z.string().default(""),
+  auditedAt: z.string().min(1),
+  followUpRoundFired: z.boolean().default(false),
+});
 
 export const AlternativeSchema = z.object({
   id: z.string(),

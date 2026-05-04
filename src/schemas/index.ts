@@ -6,12 +6,6 @@ import {
   TIME_TO_SIGNAL_VALUES,
 } from "../critic/types.js";
 
-const axisValueSchema = <T extends [string, ...string[]]>(values: T) =>
-  z.object({
-    value: z.enum(values),
-    note: z.string().min(1),
-  });
-
 export const CriticChoiceEvaluationSchema = z.object({
   reversibility: z.object({ value: z.enum(REVERSIBILITY_VALUES), note: z.string().min(1) }),
   blastRadius: z.object({ value: z.enum(BLAST_RADIUS_VALUES), note: z.string().min(1) }),

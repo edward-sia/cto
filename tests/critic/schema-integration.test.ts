@@ -50,4 +50,27 @@ describe("LeafImplementationSketch.criticEvaluation", () => {
       })
     ).toThrow(/criticEvaluation/i);
   });
+
+  it("accepts a fully populated sketch", () => {
+    const parsed = LeafImplementationSketchSchema.parse({
+      leafId: "leaf-1",
+      approach: "Use OTel SDK",
+      filesLikelyChanged: ["src/tracing.ts"],
+      algorithmOrArchitecture: ["wrap fetch"],
+      riskAreas: ["sampling"],
+      expectedTests: ["sampling test"],
+      estimatedComplexity: "medium",
+      confidence: 0.8,
+      rationale: "well-supported",
+      criticEvaluation: {
+        reversibility: { value: "freely-reversible", note: "Feature flag controlled." },
+        blastRadius: { value: "low", note: "Tracing only." },
+        timeToSignal: { value: "fast", note: "Synthetic monitor." },
+        counterCase: "OTel collector adds latency.",
+        falsifier: "p99 > 250ms in staging.",
+      },
+    });
+    expect(parsed.criticEvaluation.reversibility.value).toBe("freely-reversible");
+    expect(parsed.criticEvaluation.timeToSignal.note).toContain("Synthetic");
+  });
 });

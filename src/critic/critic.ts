@@ -95,26 +95,13 @@ Return JSON:
 }
 Only include dimensions in coverageGaps that were not meaningfully addressed.`;
 
-    const response = await withRetry(() =>
-      this.openai.chat.completions.create({
-        model: this.model,
-        messages: [
-          { role: "system", content: COVERAGE_AUDIT_SYSTEM },
-          { role: "user", content: prompt },
-        ],
-        temperature: 0.2,
-        max_tokens: 900,
-      })
-    );
-    addUsageFromResponse(this.usage, response);
-    const raw = response.choices[0]?.message?.content ?? "";
+    const raw = await this.callLLM(COVERAGE_AUDIT_SYSTEM, prompt, 900);
     const jsonStr = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-    const parsed = CriticCoverageAuditSchema.parse({
+    return CriticCoverageAuditSchema.parse({
       ...JSON.parse(jsonStr),
       auditedAt: new Date().toISOString(),
       followUpRoundFired,
     });
-    return parsed;
   }
 
   async evaluateAlternative(
@@ -187,7 +174,7 @@ Return JSON:
     return LeafImplementationSketchSchema.parse(JSON.parse(jsonStr));
   }
 
-  private async callLLM(system: string, user: string): Promise<string> {
+  private async callLLM(system: string, user: string, maxTokens = 1200): Promise<string> {
     const response = await withRetry(() =>
       this.openai.chat.completions.create({
         model: this.model,
@@ -196,7 +183,7 @@ Return JSON:
           { role: "user", content: user },
         ],
         temperature: 0.2,
-        max_tokens: 1200,
+        max_tokens: maxTokens,
       })
     );
     addUsageFromResponse(this.usage, response);

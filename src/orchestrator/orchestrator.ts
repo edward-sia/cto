@@ -35,6 +35,7 @@ import { IntentDossierBuilder } from "../analyzer/intent-dossier.js";
 import { DebateEngine, type DebateProgressEvent } from "../debate/engine.js";
 import { CodexExecutor } from "../execution/codex-client.js";
 import { LeafSketcher } from "../execution/sketcher.js";
+import { Critic } from "../critic/critic.js";
 import { computeFitnessScore } from "../judge/fitness.js";
 import { Judge } from "../judge/judge.js";
 import {
@@ -135,6 +136,7 @@ export class TreeOrchestrator {
   private dossierBuilder: IntentDossierBuilder;
   private synthesizer: Synthesizer;
   private sketcher: LeafSketcher;
+  private critic: Critic;
   private cache: DeterministicCache;
   private repoFingerprint: string;
   private toolBroker?: ToolBroker;
@@ -172,6 +174,11 @@ export class TreeOrchestrator {
       modelForStage(this.config, "sketchJudge"),
       this.config.dryRun
     );
+    this.critic = new Critic({
+      openai: this.openai,
+      model: modelForStage(this.config, "sketchJudge"),
+      dryRun: this.config.dryRun,
+    });
     this.callbacks = callbacks;
   }
 
@@ -389,6 +396,11 @@ export class TreeOrchestrator {
       modelForStage(this.config, "sketchJudge"),
       this.config.dryRun
     );
+    this.critic = new Critic({
+      openai: this.openai,
+      model: modelForStage(this.config, "sketchJudge"),
+      dryRun: this.config.dryRun,
+    });
     this.syncCacheStats();
 
     const pendingNodes = this.findPendingNodes(state.root);
@@ -561,12 +573,14 @@ export class TreeOrchestrator {
 
       if (alternatives.length === 0) {
         node.status = "consensus";
+        await this.runCoverageAudit(node, transcript.summary);
         await this.processConsensusChild(node, transcript.summary);
         return;
       }
 
       if (alternatives.length === 1) {
         node.status = "consensus";
+        await this.runCoverageAudit(node, transcript.summary);
         await this.processConsensusChild(node, transcript.summary, transcript.contextUpdates);
         return;
       }
@@ -602,10 +616,70 @@ export class TreeOrchestrator {
       }
     } else {
       node.status = "consensus";
+      await this.runCoverageAudit(node, transcript.summary);
       await this.processConsensusChild(node, transcript.summary, transcript.contextUpdates);
     }
 
     await this.store.save(this.runState);
+  }
+
+  private async runCoverageAudit(node: TreeNode, summary: string): Promise<void> {
+    if (this.config.dryRun) return;
+
+    let audit;
+    try {
+      audit = await this.critic.auditCoverage(node.context, summary, false);
+    } catch (error) {
+      this.callbacks.onError?.(node.id, error instanceof Error ? error : new Error(String(error)));
+      node.context.coverageAudit = {
+        coverageGaps: [],
+        premortem: "[error] Coverage audit failed.",
+        auditedAt: new Date().toISOString(),
+        followUpRoundFired: false,
+      };
+      this.accumulateLLMUsage(this.critic.llmUsage);
+      return;
+    }
+
+    if (audit.coverageGaps.length === 0) {
+      node.context.coverageAudit = audit;
+      this.accumulateLLMUsage(this.critic.llmUsage);
+      return;
+    }
+
+    this.runFollowUpRoundForGaps(node, audit.coverageGaps);
+
+    let reAudit;
+    try {
+      reAudit = await this.critic.auditCoverage(node.context, summary, true);
+    } catch (error) {
+      this.callbacks.onError?.(node.id, error instanceof Error ? error : new Error(String(error)));
+      node.context.coverageAudit = {
+        coverageGaps: audit.coverageGaps,
+        premortem: audit.premortem,
+        auditedAt: new Date().toISOString(),
+        followUpRoundFired: true,
+      };
+      this.accumulateLLMUsage(this.critic.llmUsage);
+      return;
+    }
+
+    node.context.coverageAudit = reAudit;
+    this.accumulateLLMUsage(this.critic.llmUsage);
+  }
+
+  private runFollowUpRoundForGaps(
+    node: TreeNode,
+    gaps: Array<{ dimension: string; reason: string }>
+  ): void {
+    // Synthetic-round fallback (cheaper than re-running DebateEngine):
+    // append a gap-driven coverage note to architectureDecisions so
+    // descendants and leaf sketches see the guidance.
+    const focus = gaps.map((g) => `- ${g.dimension}: ${g.reason}`).join("\n");
+    const note = `Coverage follow-up — please address:\n${focus}`;
+    node.context.architectureDecisions = [
+      ...new Set([...(node.context.architectureDecisions ?? []), note]),
+    ];
   }
 
   private async processConsensusChild(

@@ -37,6 +37,8 @@ import { DebateEngine, type DebateProgressEvent } from "../debate/engine.js";
 import { CodexExecutor } from "../execution/codex-client.js";
 import { LeafSketcher } from "../execution/sketcher.js";
 import { Critic } from "../critic/critic.js";
+import { rankSketches } from "../critic/sketch-ranker.js";
+import type { LeafImplementationSketch } from "../types/index.js";
 import { computeFitnessScore } from "../judge/fitness.js";
 import { Judge } from "../judge/judge.js";
 import {
@@ -443,7 +445,6 @@ export class TreeOrchestrator {
         fallback.skippedExecutionReason = undefined;
         await this.executeLeaves(root, [fallback]);
       }
-      this.accumulateLLMUsage(this.sketcher.llmUsage);
       await this.judgeLeaves(root);
       this.accumulateLLMUsage(this.judge.llmUsage);
       this.runState.rankedResults = this.rankResults(root);
@@ -780,25 +781,31 @@ export class TreeOrchestrator {
   private async sketchAndSelectLeaves(root: TreeNode): Promise<TreeNode[]> {
     const leaves = this.collectLeaves(root).filter((n) => n.status !== "pruned");
     const tasks = leaves.map((leaf) => async () => {
-      leaf.implementationSketch = await this.sketcher.sketch(leaf);
-      leaf.sketchScore = await this.sketcher.score(leaf, leaf.implementationSketch);
+      leaf.implementationSketch = await this.critic.evaluateSketch(leaf);
     });
     await runWithConcurrency(tasks, this.config.leafConcurrency);
 
-    const ranked = [...leaves].sort((a, b) =>
-      (b.sketchScore?.composite ?? 0) - (a.sketchScore?.composite ?? 0)
+    const validLeaves = leaves.filter(
+      (leaf): leaf is TreeNode & { implementationSketch: LeafImplementationSketch } =>
+        Boolean(leaf.implementationSketch)
     );
+    const rankedSketches = rankSketches(validLeaves.map((leaf) => leaf.implementationSketch!));
+    const rankedLeaves = rankedSketches
+      .map((sketch) => validLeaves.find((leaf) => leaf.id === sketch.leafId)!)
+      .filter(Boolean);
+
     const topN = this.config.sketchExecutionTopN ?? DEFAULT_RUN_CONFIG.sketchExecutionTopN ?? 2;
-    const selected = new Set(ranked.slice(0, Math.max(1, topN)).map((leaf) => leaf.id));
-    for (const leaf of ranked) {
-      if (selected.has(leaf.id)) {
+    const selectedIds = new Set(rankedLeaves.slice(0, Math.max(1, topN)).map((leaf) => leaf.id));
+    for (const leaf of rankedLeaves) {
+      if (selectedIds.has(leaf.id)) {
         leaf.skippedExecutionReason = undefined;
       } else {
         leaf.skippedExecutionReason = `Skipped before Codex execution: sketch ranked below top ${topN}.`;
       }
     }
+    this.accumulateLLMUsage(this.critic.llmUsage);
     await this.store.save(this.runState);
-    return ranked.filter((leaf) => selected.has(leaf.id));
+    return rankedLeaves.filter((leaf) => selectedIds.has(leaf.id));
   }
 
   private nextSketchFallback(root: TreeNode, executedLeaves: TreeNode[]): TreeNode | undefined {
@@ -809,9 +816,15 @@ export class TreeOrchestrator {
       !leaf.executionResult?.success || (leaf.executionResult.verification?.requiredFailed ?? 0) > 0
     );
     if (!allFailedRequired) return undefined;
-    return this.collectLeaves(root)
-      .filter((leaf) => leaf.skippedExecutionReason && leaf.sketchScore)
-      .sort((a, b) => (b.sketchScore?.composite ?? 0) - (a.sketchScore?.composite ?? 0))[0];
+
+    const skippedLeaves = this.collectLeaves(root)
+      .filter((leaf) => leaf.skippedExecutionReason && leaf.implementationSketch);
+    const skippedSketches = skippedLeaves
+      .map((leaf) => leaf.implementationSketch!)
+      .filter(Boolean);
+    const ranked = rankSketches(skippedSketches);
+    const best = ranked[0];
+    return best ? skippedLeaves.find((leaf) => leaf.id === best.leafId) : undefined;
   }
 
   private async executeLeaves(root: TreeNode, leavesToExecute?: TreeNode[]): Promise<void> {

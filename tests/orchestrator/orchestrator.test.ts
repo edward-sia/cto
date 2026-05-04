@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import OpenAI from "openai";
 import { TreeOrchestrator } from "../../src/orchestrator/orchestrator.js";
-import type { Alternative, TreeNode } from "../../src/types/index.js";
+import type { Alternative, LeafImplementationSketch, TreeNode } from "../../src/types/index.js";
 
 describe("TreeOrchestrator", () => {
   it("stores dry-run task analysis and reports it through callbacks", async () => {
@@ -483,6 +483,25 @@ function collectNodes(node: TreeNode): TreeNode[] {
   return [node, ...node.children.flatMap((child) => collectNodes(child))];
 }
 
+const fakeSketch = (id: string): LeafImplementationSketch => ({
+  leafId: id,
+  approach: "x",
+  filesLikelyChanged: [],
+  algorithmOrArchitecture: [],
+  riskAreas: [],
+  expectedTests: [],
+  estimatedComplexity: "medium",
+  confidence: 0.7,
+  rationale: "test",
+  criticEvaluation: {
+    reversibility: { value: "reversible-with-effort", note: "" },
+    blastRadius: { value: "low", note: "" },
+    timeToSignal: { value: "medium", note: "" },
+    counterCase: "",
+    falsifier: "",
+  },
+});
+
 function fakeLeaf(
   id: string,
   sketchScore: number,
@@ -510,6 +529,7 @@ function fakeLeaf(
       composite: sketchScore,
       rationale: "test",
     },
+    implementationSketch: fakeSketch(id),
     skippedExecutionReason,
     executionResult: requiredFailed === undefined ? undefined : {
       threadId: id,

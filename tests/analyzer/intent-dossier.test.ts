@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import OpenAI from "openai";
 import { IntentDossierBuilder } from "../../src/analyzer/intent-dossier.js";
+import type { LLMClient } from "../../src/providers/llm-provider.js";
 
 describe("IntentDossierBuilder", () => {
   it("returns a deterministic dossier in dry-run mode", async () => {
@@ -23,17 +23,14 @@ describe("IntentDossierBuilder", () => {
   });
 
   it("falls back to a safe dossier when the model response is malformed", async () => {
-    const openai = {
-      chat: {
-        completions: {
-          create: async () => ({
-            choices: [{ message: { content: "not json" } }],
-            usage: { prompt_tokens: 1, completion_tokens: 1 },
-          }),
-        },
-      },
-    } as unknown as OpenAI;
-    const builder = new IntentDossierBuilder(openai, "gpt-4o", false);
+    const llm: LLMClient = {
+      createChatCompletion: async () => ({
+        text: "not json",
+        raw: {},
+        usage: { inputTokens: 1, cachedInputTokens: 0, outputTokens: 1 },
+      }),
+    };
+    const builder = new IntentDossierBuilder(llm, "gpt-4o", false);
 
     const dossier = await builder.build("Ship a CLI", {
       loadBearingClaims: ["Ship a CLI"],
@@ -50,21 +47,14 @@ describe("IntentDossierBuilder", () => {
   });
 
   it("falls back and keeps usage when the model returns an incomplete dossier", async () => {
-    const openai = {
-      chat: {
-        completions: {
-          create: async () => ({
-            choices: [{ message: { content: "{}" } }],
-            usage: {
-              prompt_tokens: 12,
-              completion_tokens: 3,
-              prompt_tokens_details: { cached_tokens: 4 },
-            },
-          }),
-        },
-      },
-    } as unknown as OpenAI;
-    const builder = new IntentDossierBuilder(openai, "gpt-4o", false);
+    const llm: LLMClient = {
+      createChatCompletion: async () => ({
+        text: "{}",
+        raw: {},
+        usage: { inputTokens: 12, cachedInputTokens: 4, cacheWriteTokens: 0, cacheMissInputTokens: 8, outputTokens: 3, reasoningOutputTokens: 0 },
+      }),
+    };
+    const builder = new IntentDossierBuilder(llm, "gpt-4o", false);
 
     const dossier = await builder.build("Add export to CSV", {
       loadBearingClaims: ["Add export to CSV"],
@@ -83,7 +73,10 @@ describe("IntentDossierBuilder", () => {
     expect(builder.llmUsage).toEqual({
       inputTokens: 12,
       cachedInputTokens: 4,
+      cacheWriteTokens: 0,
+      cacheMissInputTokens: 8,
       outputTokens: 3,
+      reasoningOutputTokens: 0,
     });
   });
 });

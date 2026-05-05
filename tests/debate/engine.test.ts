@@ -333,35 +333,19 @@ describe("DebateEngine tool integration", () => {
     const toolEvents: Array<{ requested: number; completed: number; skipped: number; failed: number }> = [];
     let createCalls = 0;
     let moderatorPrompt = "";
-    const response = (content: string) => ({
-      choices: [{ message: { content } }],
-      usage: {
-        total_tokens: 1,
-        prompt_tokens: 1,
-        completion_tokens: 1,
-        prompt_tokens_details: { cached_tokens: 0 },
+    const fakeLLMClient = {
+      async createChatCompletion(request: { messages: Array<{ role: string; content: string }> }) {
+        createCalls += 1;
+        let text: string;
+        if (createCalls <= 2) {
+          text = `[${createCalls === 1 ? "developer" : "tech-lead"}] Need docs.\nTOOL_REQUEST [docs-fetch]: official docs for implementation`;
+        } else {
+          moderatorPrompt = String(request.messages.find((m) => m.role === "user")?.content ?? "");
+          text = JSON.stringify({ outcome: "consensus", alternatives: [], summary: "Tool evidence supports consensus." });
+        }
+        return { text, raw: {}, usage: { inputTokens: 1, cachedInputTokens: 0, cacheWriteTokens: 0, cacheMissInputTokens: 1, outputTokens: 1, reasoningOutputTokens: 0 } };
       },
-    });
-    const fakeOpenAI = {
-      chat: {
-        completions: {
-          async create(input: { messages: Array<{ role: string; content: unknown }> }) {
-            createCalls += 1;
-            if (createCalls <= 2) {
-              return response(`[${createCalls === 1 ? "developer" : "tech-lead"}] Need docs.
-TOOL_REQUEST [docs-fetch]: official docs for implementation`);
-            }
-
-            moderatorPrompt = String(input.messages.find((message) => message.role === "user")?.content ?? "");
-            return response(JSON.stringify({
-              outcome: "consensus",
-              alternatives: [],
-              summary: "Tool evidence supports consensus.",
-            }));
-          },
-        },
-      },
-    } as unknown as OpenAI;
+    };
     const fakeBroker: Pick<ToolBroker, "resolveRoundRequests"> = {
       async resolveRoundRequests(input) {
         events.push("broker");
@@ -405,7 +389,7 @@ TOOL_REQUEST [docs-fetch]: official docs for implementation`);
     };
 
     const engine = new DebateEngine({
-      openai: fakeOpenAI,
+      llm: fakeLLMClient,
       reasoningModel: "test-model",
       maxDebateRounds: 1,
       maxBranching: 2,

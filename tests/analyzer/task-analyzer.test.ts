@@ -1,31 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
-import OpenAI from "openai";
 import { TaskAnalyzer } from "../../src/analyzer/task-analyzer.js";
-
-function makeMockOpenAI(content: string): OpenAI {
-  return {
-    chat: {
-      completions: {
-        create: vi.fn().mockResolvedValue({
-          choices: [{ message: { content } }],
-          usage: { total_tokens: 100 },
-        }),
-      },
-    },
-  } as unknown as OpenAI;
-}
+import { makeFailingLLM, makeMockLLM } from "../helpers/llm.js";
+import type { LLMClient } from "../../src/providers/llm-provider.js";
 
 describe("TaskAnalyzer", () => {
-  it("returns default panel in dry-run mode without calling OpenAI", async () => {
-    const mockCreate = vi.fn();
-    const openai = {
-      chat: { completions: { create: mockCreate } },
-    } as unknown as OpenAI;
-    const analyzer = new TaskAnalyzer(openai, "gpt-4o", true);
+  it("returns default panel in dry-run mode without calling the LLM", async () => {
+    const llm = { createChatCompletion: vi.fn() } as unknown as LLMClient;
+    const analyzer = new TaskAnalyzer(llm, "gpt-4o", true);
 
     const result = await analyzer.analyze("Build a REST API");
 
-    expect(mockCreate).not.toHaveBeenCalled();
+    expect(llm.createChatCompletion).not.toHaveBeenCalled();
     expect(result.runMode).toBe("implementation");
     expect(result.selectedAgents).toContain("business-analyst");
     expect(result.selectedAgents).toContain("developer");
@@ -41,8 +26,8 @@ describe("TaskAnalyzer", () => {
       selectedAgents: ["product-manager", "tech-lead", "developer", "security-engineer"],
       rationale: "Auth task - security engineer selected",
     });
-    const openai = makeMockOpenAI(response);
-    const analyzer = new TaskAnalyzer(openai, "gpt-4o", false);
+    const llm = makeMockLLM(response);
+    const analyzer = new TaskAnalyzer(llm, "gpt-4o", false);
 
     const result = await analyzer.analyze("Add OAuth2 authentication");
 
@@ -51,19 +36,53 @@ describe("TaskAnalyzer", () => {
     expect(result.rationale).toBe("Auth task - security engineer selected");
   });
 
+  it("parses JSON when providers wrap it in prose or markdown fences", async () => {
+    const response = `Here is the classification:\n\n\`\`\`json\n${JSON.stringify({
+      runMode: "implementation",
+      selectedAgents: ["tech-lead", "developer", "api-integration-architect"],
+      rationale: "API integration task",
+    })}\n\`\`\``;
+    const llm = makeMockLLM(response);
+    const analyzer = new TaskAnalyzer(llm, "gpt-4o", false);
+
+    const result = await analyzer.analyze("Add Stripe webhook handling");
+
+    expect(result.runMode).toBe("implementation");
+    expect(result.selectedAgents).toContain("api-integration-architect");
+    expect(result.selectedAgents).toContain("developer");
+  });
+
+  it("reports LLM request failures separately from response parse failures", async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const error = Object.assign(new Error("Provider returned error"), { status: 429 });
+    const llm = makeFailingLLM(error);
+    const analyzer = new TaskAnalyzer(llm, "gpt-4o", false);
+
+    const resultPromise = analyzer.analyze("Build something");
+    await vi.runAllTimersAsync();
+    const result = await resultPromise;
+
+    expect(result.runMode).toBe("implementation");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("TaskAnalyzer: LLM request failed"));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("429 Provider returned error"));
+
+    warn.mockRestore();
+    vi.useRealTimers();
+  });
+
   it("describes agent specialties with do and do-not boundaries in the classifier prompt", async () => {
     const response = JSON.stringify({
       runMode: "implementation",
       selectedAgents: ["product-manager", "tech-lead", "developer", "frontend-engineer"],
       rationale: "Frontend implementation task",
     });
-    const openai = makeMockOpenAI(response);
-    const analyzer = new TaskAnalyzer(openai, "gpt-4o", false);
+    const llm = makeMockLLM(response);
+    const analyzer = new TaskAnalyzer(llm, "gpt-4o", false);
 
     await analyzer.analyze("Build a responsive settings page");
 
-    const create = openai.chat.completions.create as ReturnType<typeof vi.fn>;
-    const systemPrompt = create.mock.calls[0][0].messages[0].content;
+    const systemPrompt = llm.createChatCompletion.mock.calls[0][0].messages[0].content;
     expect(systemPrompt).toContain('"frontend-engineer": Frontend Engineer');
     expect(systemPrompt).toContain("Does:");
     expect(systemPrompt).toContain("Does not:");
@@ -71,8 +90,8 @@ describe("TaskAnalyzer", () => {
   });
 
   it("falls back to default panel when LLM returns invalid JSON", async () => {
-    const openai = makeMockOpenAI("not valid json at all");
-    const analyzer = new TaskAnalyzer(openai, "gpt-4o", false);
+    const llm = makeMockLLM("not valid json at all");
+    const analyzer = new TaskAnalyzer(llm, "gpt-4o", false);
 
     const result = await analyzer.analyze("Build something");
 
@@ -89,8 +108,8 @@ describe("TaskAnalyzer", () => {
       selectedAgents: ["fake-agent"],
       rationale: "Bad role",
     });
-    const openai = makeMockOpenAI(response);
-    const analyzer = new TaskAnalyzer(openai, "gpt-4o", false);
+    const llm = makeMockLLM(response);
+    const analyzer = new TaskAnalyzer(llm, "gpt-4o", false);
 
     const result = await analyzer.analyze("Build a CLI command");
 
@@ -110,8 +129,8 @@ describe("TaskAnalyzer", () => {
       selectedAgents: ["product-manager", "security-engineer"],
       rationale: "Auth task",
     });
-    const openai = makeMockOpenAI(response);
-    const analyzer = new TaskAnalyzer(openai, "gpt-4o", false);
+    const llm = makeMockLLM(response);
+    const analyzer = new TaskAnalyzer(llm, "gpt-4o", false);
 
     const result = await analyzer.analyze("Add OAuth2 authentication");
 
@@ -131,8 +150,8 @@ describe("TaskAnalyzer", () => {
       selectedAgents: ["tech-lead", "developer", "frontend-engineer"],
       rationale: "Frontend feature",
     });
-    const openai = makeMockOpenAI(response);
-    const analyzer = new TaskAnalyzer(openai, "gpt-4o", false);
+    const llm = makeMockLLM(response);
+    const analyzer = new TaskAnalyzer(llm, "gpt-4o", false);
 
     const result = await analyzer.analyze("Build a settings page");
 
@@ -146,8 +165,8 @@ describe("TaskAnalyzer", () => {
       selectedAgents: ["researcher", "business-analyst"],
       rationale: "Research task",
     });
-    const openai = makeMockOpenAI(response);
-    const analyzer = new TaskAnalyzer(openai, "gpt-4o", false);
+    const llm = makeMockLLM(response);
+    const analyzer = new TaskAnalyzer(llm, "gpt-4o", false);
 
     const result = await analyzer.analyze("Research GraphQL vs REST trade-offs");
 
@@ -161,8 +180,8 @@ describe("TaskAnalyzer", () => {
       selectedAgents: ["researcher", "fake-agent", "data-analyst"],
       rationale: "Research task",
     });
-    const openai = makeMockOpenAI(response);
-    const analyzer = new TaskAnalyzer(openai, "gpt-4o", false);
+    const llm = makeMockLLM(response);
+    const analyzer = new TaskAnalyzer(llm, "gpt-4o", false);
 
     const result = await analyzer.analyze("Investigate feasibility of GraphQL");
 
@@ -177,8 +196,8 @@ describe("TaskAnalyzer", () => {
       selectedAgents: ["researcher", "business-analyst"],
       rationale: "Pure research task - no implementation needed",
     });
-    const openai = makeMockOpenAI(response);
-    const analyzer = new TaskAnalyzer(openai, "gpt-4o", false);
+    const llm = makeMockLLM(response);
+    const analyzer = new TaskAnalyzer(llm, "gpt-4o", false);
 
     const result = await analyzer.analyze("Research the best database for time-series data");
 

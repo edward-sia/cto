@@ -18,7 +18,7 @@ Layer 3: Execution (src/execution/, src/verification/, src/judge/) — Codex SDK
 - **Language:** TypeScript (ESM, NodeNext modules)
 - **Runtime:** Node.js 18+
 - **Key deps:** openai, @openai/codex-sdk, commander, chalk, ora, nanoid, zod
-- **LLM providers:** OpenAI-compatible provider layer for OpenAI, OpenRouter, Google Gemini, and DeepSeek
+- **LLM providers:** OpenAI-compatible adapter for OpenAI, OpenRouter, Google Gemini, and DeepSeek; native Anthropic Messages adapter for Claude
 - **Persistence:** JSON files in `.cambrian-tree/<run-id>/state.json`
 - **CLI framework:** Commander.js
 - **UI:** Dependency-free local HTTP server + browser shell in `src/ui/`
@@ -33,8 +33,8 @@ src/
 ├── analyzer/                 # Intent decomposition, dossier, run-mode and specialist selection
 ├── utils/retry.ts            # Exponential-backoff retry wrapper
 ├── utils/cost.ts             # Pre-run token/USD estimator
-├── providers/llm-provider.ts # OpenAI-compatible provider registry + client factory
 ├── utils/pruning.ts          # Confidence/relevance pruning and depth schedules
+├── providers/llm-provider.ts # Provider registry, adapters, and usage normalization
 ├── agents/definitions.ts     # Agent system prompts + role configs
 ├── debate/engine.ts          # Round-table debate engine
 ├── orchestrator/orchestrator.ts  # Main tree orchestration loop
@@ -56,8 +56,7 @@ npx tsx src/cli/index.ts run "<intent>" --depth 3 --branching 2  # Run
 npx tsx src/cli/index.ts run "<intent>" --provider openrouter  # Run debate/judge via OpenRouter
 npx tsx src/cli/index.ts run "<intent>" --provider gemini  # Run debate/judge via Google Gemini
 npx tsx src/cli/index.ts run "<intent>" --provider deepseek  # Run debate/judge via DeepSeek
-npx tsx src/cli/index.ts run "<intent>" --verify "npm test" --verify "npm run typecheck"  # Run leaf checks
-npx tsx src/cli/index.ts run "<intent>" --prune-schedule "0:0.45,2:0.7,4:0.85"  # Depth-aware pruning
+npx tsx src/cli/index.ts run "<intent>" --provider claude  # Run debate/judge via Anthropic Claude
 npx tsx src/cli/index.ts run "<intent>" --interactive-plan  # Run with human review before leaf execution
 npx tsx src/cli/index.ts list  # List runs
 npx tsx src/cli/index.ts show <run-id>  # Show results
@@ -85,17 +84,24 @@ npx tsx src/cli/index.ts resume <run-id>  # Resume
 
 ## LLM Provider Support
 
-Debate, analysis, exploration synthesis, and judge calls use a configurable OpenAI-compatible LLM client. Leaf implementation still uses Codex unless the run is in exploration mode or `--dry-run`.
+Debate, analysis, exploration synthesis, and judge calls use a configurable LLM provider adapter. Leaf implementation still uses Codex unless the run is in exploration mode or `--dry-run`.
 
 Provider flags:
 - `--provider openai` uses `OPENAI_API_KEY` and defaults to `gpt-4o`
 - `--provider openrouter` uses `OPENROUTER_API_KEY` and defaults to `qwen/qwen3-coder:free`
 - `--provider gemini` uses `GEMINI_API_KEY` and defaults to `gemini-3-flash-preview`
 - `--provider deepseek` uses `DEEPSEEK_API_KEY` and defaults to `deepseek-v4-pro`
+- `--provider claude` uses `ANTHROPIC_API_KEY` and defaults to `claude-sonnet-4-5`
 - `--model <model>` overrides the provider default for both reasoning and judge calls
 - `--base-url <url>` and `--api-key-env <name>` override the provider registry, useful for proxies or alternate accounts
 
 Provider metadata lives in `src/providers/llm-provider.ts`; persisted runs store provider, model, base URL, and API-key env in `RunConfig`. `cto resume` reuses the saved provider settings unless explicitly overridden.
+
+OpenAI, OpenRouter, Gemini, and DeepSeek share the OpenAI-compatible adapter. Claude uses Anthropic's native `/v1/messages` shape, where system prompts are top-level, `max_tokens` is required, and `x-api-key` plus `anthropic-version` headers are sent. CTO normalizes all providers to one internal text and usage shape; Claude cache telemetry is recorded when returned, but CTO does not inject Anthropic `cache_control` blocks yet.
+
+Gemini defaults to OpenAI-compatible `reasoning_effort: "minimal"` in the provider registry. Keep this provider default unless the model/prompt budget changes, because Gemini 3's default dynamic thinking can truncate short JSON responses.
+
+Structured provider responses are parsed through CTO's shared JSON-object extractor so fenced or lightly prefaced JSON can still validate. Provider transport failures, including OpenRouter `429` rate limits on `:free` models, are reported separately from JSON parse failures.
 
 ## Key Design Patterns
 
@@ -114,7 +120,7 @@ Provider metadata lives in `src/providers/llm-provider.ts`; persisted runs store
 
 **Phases 1–4, evolutionary foundation, cost-control foundation, interactive plan gate, and saved-run UI complete.** The CLI runs end-to-end with intent decomposition/dossiers, dynamic specialist selection, verified ground-truth inputs, progressive branch pruning, compact debate context, deterministic caching, sketch-first leaf ranking, narrowed Codex execution, optional post-leaf verification, fitness ranking, pre-run cost estimation, optional human review before execution, Codex usage breakdown, and a local browser UI for inspecting saved trees. Use `--dry-run` for tree-shape testing without LLM, verification, or Codex calls.
 
-**Multi-provider LLM routing is available.** OpenRouter, Google Gemini, and DeepSeek are supported through the shared OpenAI-compatible provider layer for debate, analysis, synthesis, and judging.
+**Multi-provider LLM routing is available.** OpenRouter, Google Gemini, and DeepSeek are supported through the shared OpenAI-compatible provider adapter; Claude is supported through the native Anthropic Messages adapter.
 
 ## Work Plan
 
@@ -199,7 +205,7 @@ Provider metadata lives in `src/providers/llm-provider.ts`; persisted runs store
 - Imports use `.js` extension (NodeNext module resolution)
 - No classes where a function would suffice — classes only for stateful components (DebateEngine, TreeOrchestrator, Judge, FileStore, CodexExecutor)
 - Types go in `src/types/index.ts`
-- Provider defaults and OpenAI-compatible endpoint configuration go in `src/providers/llm-provider.ts`; do not scatter provider URLs or env var names across call sites
+- Provider defaults, endpoint configuration, adapters, and usage normalization go in `src/providers/llm-provider.ts`; do not scatter provider URLs or env var names across call sites
 - Error handling: wrap LLM calls in try/catch, fallback gracefully, never crash the tree traversal
 - Console output: use chalk for colour, ora for spinners, keep output readable
 - Code-impacting changes should update `README.md`, `AGENTS.md`, `CLAUDE.md`, or `docs/**`; `npm test` enforces this through `npm run docs:check`
@@ -210,6 +216,7 @@ Provider metadata lives in `src/providers/llm-provider.ts`; persisted runs store
 - `OPENROUTER_API_KEY` — required for `--provider openrouter`
 - `GEMINI_API_KEY` — required for `--provider gemini`
 - `DEEPSEEK_API_KEY` — required for `--provider deepseek`
+- `ANTHROPIC_API_KEY` — required for `--provider claude`
 - `CAMBRIAN_TREE_STORE_DIR` — optional override for the run-state store; Vitest sets this to a temporary directory so tests do not pollute real `.cambrian-tree` runs
 - Codex CLI must be installed and authenticated (`npm install -g @openai/codex && codex login`)
 

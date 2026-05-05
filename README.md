@@ -45,6 +45,7 @@ See [docs/architecture.md](docs/architecture.md) for the system diagrams and lay
   - `OPENROUTER_API_KEY` for `--provider openrouter`
   - `GEMINI_API_KEY` for `--provider gemini`
   - `DEEPSEEK_API_KEY` for `--provider deepseek`
+  - `ANTHROPIC_API_KEY` for `--provider claude`
 - OpenAI Codex CLI installed and authenticated (for leaf execution):
   ```bash
   npm install -g @openai/codex
@@ -104,7 +105,7 @@ npx tsx src/cli/index.ts run "Inspect package metadata before choosing dependenc
 
 ### LLM Providers
 
-CTO can run the debate, analyzer, synthesis, and judge calls through OpenAI-compatible providers. Leaf implementation still uses Codex unless the run is in exploration mode or `--dry-run`.
+CTO can run the debate, analyzer, synthesis, and judge calls through provider adapters. OpenAI, OpenRouter, Gemini, and DeepSeek use an OpenAI-compatible adapter; Claude uses Anthropic's native Messages API adapter. Leaf implementation still uses Codex unless the run is in exploration mode or `--dry-run`.
 
 ```bash
 # OpenRouter, default model: qwen/qwen3-coder:free
@@ -116,11 +117,20 @@ GEMINI_API_KEY=... cto run "Build X" --provider gemini
 # DeepSeek, default model: deepseek-v4-pro
 DEEPSEEK_API_KEY=... cto run "Build X" --provider deepseek
 
+# Claude / Anthropic, default model: claude-sonnet-4-5
+ANTHROPIC_API_KEY=... cto run "Build X" --provider claude
+
 # Override any provider default
 cto run "Build X" --provider openrouter --model openai/gpt-oss-120b:free
 ```
 
-Provider defaults live in `src/providers/llm-provider.ts`. You can override the OpenAI-compatible endpoint or API-key variable with `--base-url` and `--api-key-env`, which is useful for proxies, self-hosted gateways, or alternate provider accounts.
+Provider defaults live in `src/providers/llm-provider.ts`. You can override the provider endpoint or API-key variable with `--base-url` and `--api-key-env`, which is useful for proxies, self-hosted gateways, or alternate provider accounts.
+
+Gemini uses OpenAI-compatible `reasoning_effort: "minimal"` by default. Without that, Gemini 3's dynamic thinking can consume the short structured-call budget and truncate JSON responses before CTO can parse them.
+
+OpenRouter `:free` models can return provider-side `429` rate-limit errors under load. CTO reports those as LLM request failures rather than parse failures; retry later or choose another OpenRouter model with `--model` when the free route is saturated.
+
+Claude is the one provider here that is not OpenAI-compatible at the wire level: Anthropic expects a native `/v1/messages` request with top-level `system`, `messages`, `max_tokens`, `x-api-key`, and `anthropic-version`. CTO normalizes that response into the same internal text and token-usage shape used by the OpenAI-compatible providers. Claude prompt-cache telemetry is recorded when returned, but CTO does not inject `cache_control` blocks in this first pass.
 
 To inspect saved or running runs visually:
 
@@ -145,8 +155,8 @@ Options:
   -r, --rounds <n>           Maximum debate rounds/node        (default: 3)
   -m, --model <model>        Reasoning + judge model           (default: gpt-4o)
       --provider <provider>  LLM provider: openai, openrouter,
-                             gemini, or deepseek
-      --base-url <url>       Override provider OpenAI-compatible base URL
+                             gemini, deepseek, or claude
+      --base-url <url>       Override provider base URL
       --api-key-env <name>   Env var containing the provider API key
   -w, --workdir <path>       Working dir for Codex             (default: cwd)
       --token-budget <n>     Warn when LLM tokens exceed n

@@ -1,15 +1,15 @@
-import OpenAI from "openai";
 import { loadFromFile } from "./file-provider.js";
 import { loadFromSample } from "./sample-provider.js";
 import { loadFromOpenApi } from "./openapi-provider.js";
 import type { DomainFacts } from "./types.js";
+import type { LLMClient } from "../providers/llm-provider.js";
 
 const KNOWN_PREFIXES = ["file", "sample", "openapi"] as const;
 type GroundTruthPrefix = (typeof KNOWN_PREFIXES)[number];
 
 export async function loadGroundTruth(
   spec: string,
-  openai: OpenAI,
+  llm: LLMClient,
   model: string
 ): Promise<DomainFacts> {
   const colonIdx = spec.indexOf(":");
@@ -36,7 +36,7 @@ export async function loadGroundTruth(
     case "file":
       return loadFromFile(path);
     case "sample":
-      return loadFromSample(path, openai, model);
+      return loadFromSample(path, llm, model);
     case "openapi":
       return loadFromOpenApi(path);
   }

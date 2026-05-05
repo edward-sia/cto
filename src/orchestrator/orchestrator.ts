@@ -4,7 +4,6 @@
  * judging, and state persistence.
  */
 
-import OpenAI from "openai";
 import { nanoid } from "nanoid";
 import { join } from "node:path";
 import type {
@@ -53,6 +52,7 @@ import { Synthesizer } from "../synthesis/synthesizer.js";
 import { defaultToolAdapters } from "../tools/adapters.js";
 import { ToolBroker } from "../tools/broker.js";
 import { VerificationRunner } from "../verification/runner.js";
+import type { LLMClient } from "../providers/llm-provider.js";
 
 const DEFAULT_PHASE_DEPTHS: Record<TreePhase, [number, number]> = {
   requirements: [0, 1],
@@ -129,7 +129,7 @@ export interface OrchestratorCallbacks {
 }
 
 export class TreeOrchestrator {
-  private openai: OpenAI;
+  private llm: LLMClient;
   private config: RunConfig;
   private store: FileStore;
   private codex: CodexExecutor;
@@ -147,11 +147,11 @@ export class TreeOrchestrator {
   private configOverrides: Partial<RunConfig>;
 
   constructor(
-    openai: OpenAI,
+    llm: LLMClient,
     config: Partial<RunConfig> = {},
     callbacks: OrchestratorCallbacks = {}
   ) {
-    this.openai = openai;
+    this.llm = llm;
     this.configOverrides = config;
     this.config = this.normalizeConfig(config);
     this.store = new FileStore();
@@ -165,13 +165,13 @@ export class TreeOrchestrator {
       cloudEnv: this.config.cloudEnv,
       cloudAttempts: this.config.cloudAttempts,
     });
-    this.judge = new Judge(openai, modelForStage(this.config, "judge"), this.config.dryRun);
-    this.analyzer = new TaskAnalyzer(openai, modelForStage(this.config, "analyzer"), this.config.dryRun);
-    this.decomposer = new IntentDecomposer(openai, modelForStage(this.config, "decomposer"), this.config.dryRun);
-    this.dossierBuilder = new IntentDossierBuilder(openai, modelForStage(this.config, "dossier"), this.config.dryRun);
-    this.synthesizer = new Synthesizer(openai, modelForStage(this.config, "synthesis"), this.config.dryRun);
+    this.judge = new Judge(this.llm, modelForStage(this.config, "judge"), this.config.dryRun);
+    this.analyzer = new TaskAnalyzer(this.llm, modelForStage(this.config, "analyzer"), this.config.dryRun);
+    this.decomposer = new IntentDecomposer(this.llm, modelForStage(this.config, "decomposer"), this.config.dryRun);
+    this.dossierBuilder = new IntentDossierBuilder(this.llm, modelForStage(this.config, "dossier"), this.config.dryRun);
+    this.synthesizer = new Synthesizer(this.llm, modelForStage(this.config, "synthesis"), this.config.dryRun);
     this.critic = new Critic({
-      openai: this.openai,
+      llm: this.llm,
       model: modelForStage(this.config, "sketchJudge"),
       dryRun: this.config.dryRun,
     });
@@ -384,10 +384,10 @@ export class TreeOrchestrator {
       cloudEnv: this.config.cloudEnv,
       cloudAttempts: this.config.cloudAttempts,
     });
-    this.judge = new Judge(this.openai, modelForStage(this.config, "judge"), this.config.dryRun);
-    this.synthesizer = new Synthesizer(this.openai, modelForStage(this.config, "synthesis"), this.config.dryRun);
+    this.judge = new Judge(this.llm, modelForStage(this.config, "judge"), this.config.dryRun);
+    this.synthesizer = new Synthesizer(this.llm, modelForStage(this.config, "synthesis"), this.config.dryRun);
     this.critic = new Critic({
-      openai: this.openai,
+      llm: this.llm,
       model: modelForStage(this.config, "sketchJudge"),
       dryRun: this.config.dryRun,
     });
@@ -509,9 +509,8 @@ export class TreeOrchestrator {
     const agents = this.getAgentsForPhase(phase);
 
     const debateEngine = new DebateEngine({
-      openai: this.openai,
-      reasoningModel: modelForStage(this.config, "debate"),
-      moderatorModel: modelForStage(this.config, "moderator"),
+      llm: this.llm,
+      reasoningModel: this.config.reasoningModel,
       maxDebateRounds: this.config.maxDebateRounds,
       maxBranching: this.config.maxBranching,
       dryRun: this.config.dryRun,

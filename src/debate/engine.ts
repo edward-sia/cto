@@ -5,7 +5,6 @@
  * The debate continues in rounds until consensus, divergence, or max rounds.
  */
 
-import OpenAI from "openai";
 import { nanoid } from "nanoid";
 import type {
   AgentRole,
@@ -29,8 +28,10 @@ import {
 import { ModeratorAssessmentSchema } from "../schemas/index.js";
 import type { ToolBroker, IncomingToolRequest } from "../tools/broker.js";
 import { renderToolEvidenceForPrompt, rollupToolEvidence } from "../tools/render.js";
+import type { LLMClient } from "../providers/llm-provider.js";
+import { parseJsonObject } from "../utils/json.js";
 import { withRetry } from "../utils/retry.js";
-import { addUsageFromResponse, emptyUsage } from "../utils/usage.js";
+import { addUsage, emptyUsage, totalUsageTokens } from "../utils/usage.js";
 import type { LLMUsage } from "../types/index.js";
 
 const DEFAULT_TOOL_EVIDENCE_PROMPT_LIMIT = 8;
@@ -281,7 +282,7 @@ function firstEvidencePath(evidence: NonNullable<NodeContext["toolEvidence"]>): 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface DebateEngineConfig {
-  openai: OpenAI;
+  llm: LLMClient;
   reasoningModel: string;
   moderatorModel?: string;
   maxDebateRounds: number;
@@ -306,7 +307,7 @@ export type DebateProgressEvent =
 // ─── Engine ──────────────────────────────────────────────────────────────────
 
 export class DebateEngine {
-  private openai: OpenAI;
+  private llm: LLMClient;
   private model: string;
   private moderatorModel: string;
   private maxRounds: number;
@@ -322,7 +323,7 @@ export class DebateEngine {
   private enabledTools: ToolName[];
 
   constructor(config: DebateEngineConfig) {
-    this.openai = config.openai;
+    this.llm = config.llm;
     this.model = config.reasoningModel;
     this.moderatorModel = config.moderatorModel ?? config.reasoningModel;
     this.maxRounds = config.maxDebateRounds;
@@ -676,8 +677,7 @@ ${isLastRound ? "\n⚠️ THIS IS THE FINAL ROUND. You MUST choose consensus or 
       : await this.callLLM(MODERATOR_SYSTEM_PROMPT, userPrompt, this.moderatorModel);
 
     try {
-      const jsonStr = rawResponse.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-      const parsed = ModeratorAssessmentSchema.parse(JSON.parse(jsonStr));
+      const parsed = ModeratorAssessmentSchema.parse(parseJsonObject(rawResponse));
       if (parsed.outcome === "diverging") {
         parsed.alternatives = parsed.alternatives.slice(0, this.maxBranching);
       }
@@ -696,19 +696,19 @@ ${isLastRound ? "\n⚠️ THIS IS THE FINAL ROUND. You MUST choose consensus or 
 
   private async callLLM(system: string, user: string, model = this.model): Promise<string> {
     const response = await withRetry(() =>
-      this.openai.chat.completions.create({
-        model,
+      this.llm.createChatCompletion({
+        model: this.model,
         messages: [
           { role: "system", content: system },
           { role: "user", content: user },
         ],
         temperature: 0.7,
-        max_tokens: 4096,
+        maxTokens: 4096,
       })
     );
-    this.totalTokens += response.usage?.total_tokens ?? 0;
-    addUsageFromResponse(this.usage, response);
-    return response.choices[0]?.message?.content ?? "";
+    this.totalTokens += totalUsageTokens(response.usage);
+    addUsage(this.usage, response.usage);
+    return response.text;
   }
 
   get tokensUsed(): number {

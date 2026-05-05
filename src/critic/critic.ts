@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import type {
   Alternative,
   CriticChoiceEvaluation,
@@ -15,7 +14,8 @@ import {
 } from "../schemas/index.js";
 import { combineCoverageDimensions } from "./dimensions.js";
 import { withRetry } from "../utils/retry.js";
-import { addUsageFromResponse, emptyUsage } from "../utils/usage.js";
+import { addUsage, emptyUsage } from "../utils/usage.js";
+import { LLMClient } from "../providers/llm-provider.js";
 
 const COVERAGE_AUDIT_SYSTEM = `You audit a software-engineering debate for coverage gaps and run a brief premortem.
 Return only valid JSON matching the requested shape.
@@ -29,19 +29,19 @@ const SKETCH_SYSTEM = `You produce a cheap implementation sketch for a candidate
 Do not write code. Return only valid JSON matching the requested shape.`;
 
 export interface CriticConfig {
-  openai: OpenAI;
+  llm: LLMClient;
   model: string;
   dryRun?: boolean;
 }
 
 export class Critic {
-  private openai: OpenAI;
+  private llm: LLMClient;
   private model: string;
   private dryRun: boolean;
   private usage: LLMUsage = emptyUsage();
 
   constructor(config: CriticConfig) {
-    this.openai = config.openai;
+    this.llm = config.llm;
     this.model = config.model;
     this.dryRun = config.dryRun ?? false;
   }
@@ -176,18 +176,18 @@ Return JSON:
 
   private async callLLM(system: string, user: string, maxTokens = 1200): Promise<string> {
     const response = await withRetry(() =>
-      this.openai.chat.completions.create({
+      this.llm.createChatCompletion({
         model: this.model,
         messages: [
           { role: "system", content: system },
           { role: "user", content: user },
         ],
         temperature: 0.2,
-        max_tokens: maxTokens,
+        maxTokens: maxTokens,
       })
     );
-    addUsageFromResponse(this.usage, response);
-    return response.choices[0]?.message?.content ?? "";
+    addUsage(this.usage, response.usage);
+    return response.text;
   }
 }
 

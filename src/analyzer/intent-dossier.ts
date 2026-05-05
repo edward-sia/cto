@@ -1,9 +1,9 @@
-import OpenAI from "openai";
 import { IntentDossierSchema } from "../schemas/index.js";
 import type { IntentDecomposition, IntentDossier, LLMUsage } from "../types/index.js";
 import { deriveIntentDimensions } from "../critic/dimensions.js";
 import { withRetry } from "../utils/retry.js";
-import { addUsageFromResponse, emptyUsage } from "../utils/usage.js";
+import { addUsage, emptyUsage } from "../utils/usage.js";
+import { LLMClient } from "../providers/llm-provider.js";
 
 const SYSTEM_PROMPT = `You convert a software development intent into a stable implementation dossier.
 
@@ -55,13 +55,13 @@ function hasSubstantiveDossierFields(dossier: IntentDossier): boolean {
 }
 
 export class IntentDossierBuilder {
-  private openai: OpenAI;
+  private llm: LLMClient;
   private model: string;
   private dryRun: boolean;
   private usage: LLMUsage = emptyUsage();
 
-  constructor(openai: OpenAI, model: string, dryRun = false) {
-    this.openai = openai;
+  constructor(llm: LLMClient, model: string, dryRun = false) {
+    this.llm = llm;
     this.model = model;
     this.dryRun = dryRun;
   }
@@ -76,7 +76,7 @@ export class IntentDossierBuilder {
 
     try {
       const response = await withRetry(() =>
-        this.openai.chat.completions.create({
+        this.llm.createChatCompletion({
           model: this.model,
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
@@ -86,11 +86,11 @@ export class IntentDossierBuilder {
             },
           ],
           temperature: 0.2,
-          max_tokens: 1200,
+          maxTokens: 1200,
         })
       );
-      addUsageFromResponse(this.usage, response);
-      const content = response.choices[0]?.message?.content ?? "";
+      addUsage(this.usage, response.usage);
+      const content = response.text;
       const jsonStr = content.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
       const dossier = IntentDossierSchema.parse(JSON.parse(jsonStr));
       if (!hasSubstantiveDossierFields(dossier)) {

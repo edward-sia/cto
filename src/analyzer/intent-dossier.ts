@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { IntentDossierSchema } from "../schemas/index.js";
 import type { IntentDecomposition, IntentDossier, LLMUsage } from "../types/index.js";
+import { deriveIntentDimensions } from "../critic/dimensions.js";
 import { withRetry } from "../utils/retry.js";
 import { addUsageFromResponse, emptyUsage } from "../utils/usage.js";
 
@@ -41,7 +42,7 @@ function fallbackDossier(intent: string, decomposition: IntentDecomposition): In
     knownUnknowns: decomposition.knownUnknowns,
     successSignals: ["Implementation matches the intent and verification checks pass."],
     failureModes: ["Implementation drifts from the original intent."],
-    requiredCoverageDimensions: [],
+    requiredCoverageDimensions: deriveIntentDimensions(intent, decomposition),
   };
 }
 
@@ -97,6 +98,7 @@ export class IntentDossierBuilder {
           "Parsed dossier is missing goal, userValue, or acceptanceCriteria"
         );
       }
+      dossier.requiredCoverageDimensions = deriveIntentDimensions(intent, decomposition);
       return dossier;
     } catch (error) {
       const message = error instanceof Error ? `: ${error.message}` : "";

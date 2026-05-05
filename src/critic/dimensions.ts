@@ -1,4 +1,5 @@
 import type { CoverageDimension } from "./types.js";
+import type { IntentDecomposition } from "../types/index.js";
 
 export const FIXED_CORE_DIMENSIONS: CoverageDimension[] = [
   {
@@ -37,6 +38,76 @@ export const FIXED_CORE_DIMENSIONS: CoverageDimension[] = [
     source: "fixed-core",
   },
 ];
+
+const INTENT_DERIVED_RULES: Array<{
+  id: string;
+  label: string;
+  description: string;
+  keywords: string[];
+}> = [
+  {
+    id: "security",
+    label: "Security / Threat Model",
+    description:
+      "Covers auth, secrets, PII, or external input handling. Addressed when threat surfaces are named and mitigations are proposed.",
+    keywords: ["auth", "secret", "pii", "personal data", "user data", "login", "token", "api key", "password", "credential", "external input", "untrusted", "injection", "csrf", "xss", "oauth"],
+  },
+  {
+    id: "performance",
+    label: "Performance / Scale",
+    description:
+      "Covers throughput, latency, or scale under realistic load. Addressed when a concrete performance claim or budget is stated.",
+    keywords: ["performance", "scale", "real-time", "hot path", "large data", "throughput", "latency", "high traffic", "load", "benchmark", "profil", "cache", "paginate", "streaming"],
+  },
+  {
+    id: "compliance",
+    label: "Compliance / Legal",
+    description:
+      "Covers regulatory or legal obligations. Addressed when the relevant regulation is named and the design's response to it is stated.",
+    keywords: ["compliance", "legal", "gdpr", "pci", "hipaa", "regulat", "audit trail", "sox", "ccpa", "data retention", "privacy law"],
+  },
+  {
+    id: "accessibility",
+    label: "Accessibility",
+    description:
+      "Covers access for users with disabilities. Addressed when WCAG level or specific assistive-technology behaviour is discussed.",
+    keywords: ["accessib", "a11y", "wcag", "screen reader", "aria", "disability", "keyboard navigation", "colour contrast", "focus management"],
+  },
+  {
+    id: "concurrency",
+    label: "Concurrency / Consistency",
+    description:
+      "Covers shared state, race conditions, or distributed coordination. Addressed when locking, ordering, or consistency guarantees are named.",
+    keywords: ["concurrent", "distributed", "shared state", "race condition", "transaction", "eventual consistency", "lock", "atomic", "mutex", "deadlock", "isolation"],
+  },
+];
+
+export function deriveIntentDimensions(
+  intent: string,
+  decomposition: IntentDecomposition
+): CoverageDimension[] {
+  const haystack = [
+    intent,
+    ...(decomposition.loadBearingClaims ?? []),
+    ...(decomposition.feasibilityFlags ?? []),
+    ...(decomposition.knownUnknowns ?? []),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  const derived: CoverageDimension[] = [];
+  for (const rule of INTENT_DERIVED_RULES) {
+    if (rule.keywords.some((kw) => haystack.includes(kw))) {
+      derived.push({
+        id: rule.id,
+        label: rule.label,
+        description: rule.description,
+        source: "intent-derived",
+      });
+    }
+  }
+  return derived;
+}
 
 export function combineCoverageDimensions(
   intentDerived: CoverageDimension[]

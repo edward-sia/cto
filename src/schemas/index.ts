@@ -207,18 +207,6 @@ export const LeafImplementationSketchSchema = z.object({
   criticEvaluation: CriticChoiceEvaluationSchema,
 });
 
-export const LeafSketchScoreSchema = z.object({
-  leafId: z.string(),
-  acceptanceCoverage: z.number().min(0).max(10),
-  verificationPlanQuality: z.number().min(0).max(10),
-  lowBlastRadius: z.number().min(0).max(10),
-  riskReduction: z.number().min(0).max(10),
-  complexityPenalty: z.number().min(0).max(10),
-  uncertaintyPenalty: z.number().min(0).max(10),
-  composite: z.number(),
-  rationale: z.string(),
-});
-
 export const TaskAnalysisSchema = z.object({
   runMode: z.enum(["implementation", "exploration"]),
   selectedAgents: z.array(z.string()),

@@ -727,7 +727,27 @@ function printResults(state: RunState): void {
       }
       console.log(chalk.dim(`   FC:${r.score.functionalCompleteness} AQ:${r.score.architecturalQuality} TC:${r.score.testCoverage} IA:${r.score.intentAlignment} RWF:${r.score.realWorldFit} S:${r.score.simplicity}`));
       console.log(chalk.dim(`   ${r.score.rationale}`));
+      const rNode = findNodeById(state.root, r.nodeId);
+      const ce = rNode?.implementationSketch?.criticEvaluation;
+      if (ce) {
+        console.log(chalk.dim(`   Critic — rev:${ce.reversibility.value} blast:${ce.blastRadius.value} signal:${ce.timeToSignal.value}`));
+        console.log(chalk.dim(`   Counter: ${ce.counterCase}`));
+      }
       console.log();
+    }
+  }
+
+  const gapNodes = collectNodesWithCoverageGaps(state.root);
+  if (gapNodes.length > 0) {
+    console.log(chalk.bold("\n⚠️  Coverage Gaps\n"));
+    for (const node of gapNodes) {
+      const path = getPathLabelsForNode(state.root, node.id).join(" → ") || "(root)";
+      const audit = node.context.coverageAudit!;
+      console.log(chalk.yellow(`Node ${node.id.slice(0, 12)} — ${path}`));
+      for (const gap of audit.coverageGaps) {
+        console.log(chalk.dim(`  [${gap.dimension}] ${gap.reason}`));
+      }
+      if (audit.premortem) console.log(chalk.dim(`  Premortem: ${audit.premortem}`));
     }
   }
 }
@@ -798,13 +818,32 @@ function printTree(node: TreeNode, prefix: string, isLast = true): void {
   const label = node.branchLabel || "root";
   const composite = node.fitness?.composite ?? node.score?.composite;
   const scoreStr = typeof composite === "number" ? chalk.green(` (${composite.toFixed(1)}/10)`) : "";
+  const gapCount = node.context.coverageAudit?.coverageGaps?.length ?? 0;
+  const gapStr = gapCount > 0 ? chalk.yellow(` [!${gapCount} gap${gapCount > 1 ? "s" : ""}]`) : "";
 
-  console.log(`${prefix}${connector}${icon} ${chalk.bold(label)}${scoreStr} ${chalk.dim(`[${node.id.slice(0, 8)}] d=${node.depth}`)}`);
+  console.log(`${prefix}${connector}${icon} ${chalk.bold(label)}${scoreStr}${gapStr} ${chalk.dim(`[${node.id.slice(0, 8)}] d=${node.depth}`)}`);
 
   const childPrefix = prefix + (isLast ? "    " : "│   ");
   for (let i = 0; i < node.children.length; i++) {
     printTree(node.children[i], childPrefix, i === node.children.length - 1);
   }
+}
+
+function findNodeById(root: TreeNode, id: string): TreeNode | undefined {
+  if (root.id === id) return root;
+  for (const child of root.children) {
+    const found = findNodeById(child, id);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function collectNodesWithCoverageGaps(node: TreeNode): TreeNode[] {
+  const hasGaps = (node.context.coverageAudit?.coverageGaps?.length ?? 0) > 0;
+  return [
+    ...(hasGaps ? [node] : []),
+    ...node.children.flatMap((child) => collectNodesWithCoverageGaps(child)),
+  ];
 }
 
 function getPathLabelsForNode(root: TreeNode, targetId: string): string[] {

@@ -100,7 +100,6 @@ function scoredNode(overrides: Partial<TreeNode> = {}): TreeNode {
         },
       },
     implementationSketch: overrides.implementationSketch,
-    sketchScore: overrides.sketchScore,
     skippedExecutionReason: overrides.skippedExecutionReason,
     score:
       "score" in overrides
@@ -218,17 +217,13 @@ describe("buildInspector", () => {
         estimatedComplexity: "medium",
         confidence: 0.8,
         rationale: "Low blast radius.",
-      },
-      sketchScore: {
-        leafId: "node-scored",
-        acceptanceCoverage: 8,
-        verificationPlanQuality: 8,
-        lowBlastRadius: 7,
-        riskReduction: 7,
-        complexityPenalty: 2,
-        uncertaintyPenalty: 2,
-        composite: 7.2,
-        rationale: "Good coverage.",
+        criticEvaluation: {
+          reversibility: { value: "freely-reversible", note: "Feature-flaggable." },
+          blastRadius: { value: "low", note: "Only API consumers affected." },
+          timeToSignal: { value: "fast", note: "Integration tests surface issues in CI." },
+          counterCase: "Adds a new endpoint that duplicates existing logic.",
+          falsifier: "API latency exceeds SLA within first week of rollout.",
+        },
       },
       skippedExecutionReason: "Skipped before Codex execution: sketch ranked below top 2.",
     });
@@ -236,7 +231,7 @@ describe("buildInspector", () => {
     const inspector = buildInspector(node);
 
     expect(inspector.leaf?.implementationSketch?.approach).toContain("lean API");
-    expect(inspector.leaf?.sketchScore?.composite).toBe(7.2);
+    expect(inspector.leaf?.implementationSketch?.criticEvaluation?.reversibility.value).toBe("freely-reversible");
     expect(inspector.leaf?.skippedExecutionReason).toContain("top 2");
   });
 });

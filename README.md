@@ -13,7 +13,8 @@ It is built for the moment when "ask one agent once" stops being enough: when yo
 - **Round-table agent debate** — core delivery roles and optional specialists critique the intent from different angles.
 - **Organic branching** — the moderator forks only when agents surface meaningfully different, grounded implementation paths.
 - **Implementation or exploration mode** — code-producing tasks execute through Codex; research tasks produce synthesized leaf documents.
-- **Sketch-first execution** — implementation leaves are sketched and ranked cheaply; CTO executes the top candidates by default and keeps skipped leaf evidence for inspection.
+- **Critic pre-execution evaluator** — a Critic module audits each consensus for coverage gaps, adversarially attacks each surviving alternative before branching, and produces implementation sketches with 5-axis decision axes (reversibility, blast radius, time-to-signal, counter-case, falsifier) in one call at leaves. Intent-derived dimensions (security, performance, compliance, accessibility, concurrency) are added automatically based on the intent text.
+- **Sketch-first execution** — the Critic ranks leaves via deterministic axes instead of a numeric score; CTO executes the top candidates by default and keeps skipped leaf evidence for inspection.
 - **Compact debate memory** — later rounds receive concise structured debate state instead of the full prior transcript, while full transcripts remain saved.
 - **Deterministic cache** — stable analysis, dossier, compact-summary, verification, and judge results are cached under `.cambrian-tree/cache/`.
 - **Verified ground truth** — inject JSON facts, sample data, or OpenAPI specs so agents do not invent schemas, APIs, or constraints.
@@ -380,7 +381,7 @@ Set `CAMBRIAN_TREE_STORE_DIR` to point persistence at a different run store. Thi
 
 Run state records the selected run mode, selected agents, leaf IDs, ranked results for implementation runs, LLM usage, aggregate Codex usage, cache stats, model tier assignments, and any pending browser review request. Node context records the original intent, intent decomposition, intent dossier, verified domain facts, PRD notes, acceptance criteria, architecture decisions, implementation specs, test strategy, branch decisions, human revision prompts, and ancestor summaries.
 
-Implementation leaves may also record an implementation sketch, sketch score, and skipped execution reason. Skipped leaves are not failures or pruned branches; they are candidates preserved after sketch ranking so the run can explain why Codex execution was narrowed.
+Implementation leaves record an implementation sketch (including the Critic's 5-axis decision evaluation) and an optional skipped execution reason. Skipped leaves are not failures or pruned branches; they are candidates preserved after Critic-based ranking so the run can explain why Codex execution was narrowed. Consensus nodes record a coverage audit (`coverageAudit`) with any dimension gaps and a premortem narrative; gaps are surfaced in `cto tree` and `cto show`.
 
 When interactive planning is enabled, `TreeNode.humanIntervention` records `proceed`, `revise`, or `kill`. Revision prompts are also stored on `NodeContext.humanRevisionPrompt` so subsequent debate, synthesis, and implementation prompts inherit the human steering instruction.
 
@@ -409,6 +410,7 @@ When interactive planning is enabled, `TreeNode.humanIntervention` records `proc
 | Codex usage reporting in CLI and UI | ✅ Complete |
 | Evolutionary foundation — intent dossier, verification, fitness ranking, progressive pruning | ✅ Complete |
 | Cost-control foundation — model cascade, compact context, deterministic cache, sketch-first execution | ✅ Complete |
+| Critic pre-execution evaluator — coverage audit, adversarial alternative attack, leaf decision axes, intent-derived dimensions, two-column leaf dossier in UI | ✅ Complete |
 | Documentation impact guard | ✅ Complete |
 
 **Phase 2 delivered:** Zod validation on all LLM responses, exponential-backoff retry (3 attempts, 1s/2s/4s), token budget tracking with warnings, graceful Ctrl+C shutdown with state save.
@@ -422,6 +424,8 @@ When interactive planning is enabled, `TreeNode.humanIntervention` records `proc
 **Evolutionary foundation delivered:** CTO now builds an intent dossier before debate, supports repeatable post-leaf verification commands, stores verification summaries in run state, ranks implementations by evidence-aware fitness, displays fitness-aware scores in CLI and UI, and supports depth-aware pruning schedules via `--prune-schedule`.
 
 **Cost-control foundation delivered:** CTO now has internal model-tier routing without adding CLI flags, compact debate state for later rounds, deterministic cache entries for stable analysis and evidence work, and sketch-first execution that preserves broad exploration while executing only the top-ranked implementation leaves by default.
+
+**Critic pre-execution evaluator delivered:** CTO now audits every consensus debate for coverage gaps across five fixed dimensions (correctness, fit-for-stakeholder, operability, assumptions, second-order effects) plus intent-derived dimensions (security, performance, compliance, accessibility, concurrency) derived automatically from the intent text. When gaps are found a focused follow-up round fires once; any remaining gaps are recorded as known-unknowns. At branch points every surviving alternative is adversarially attacked on five decision axes (reversibility, blast radius, time-to-signal, counter-case, falsifier); uniformly-bad alternatives are demoted before subtrees are committed. At leaves the Critic replaces the former sketcher — sketch and decision axes are produced together in one structured call, replacing the old numeric `LeafSketchScore` with a deterministic axis-based ranker. Coverage gaps are surfaced in `cto tree` (badge), `cto show`, and the saved-run UI leaf inspector (Coverage Audit section + Critic Decision Axes section).
 
 **Documentation impact guard delivered:** `npm test` now runs `npm run docs:check` before Vitest. Code-impacting diffs must update `README.md`, `AGENTS.md`, `CLAUDE.md`, or `docs/**`, with `DOCS_IMPACT=none` available only for explicitly no-docs-impact changes.
 

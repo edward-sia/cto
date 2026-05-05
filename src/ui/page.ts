@@ -2227,10 +2227,9 @@ function clientScript(): string {
       return;
     }
 
-    if (node.implementationSketch || node.sketchScore || node.skippedExecutionReason) {
+    if (node.implementationSketch || node.skippedExecutionReason) {
       var sketch = section("Implementation Sketch");
       if (node.skippedExecutionReason) appendKeyValue(sketch, "Execution", node.skippedExecutionReason);
-      if (node.sketchScore) appendKeyValue(sketch, "Sketch rank", formatScore(node.sketchScore.composite));
       if (node.implementationSketch) {
         appendTextOrEmpty(sketch, node.implementationSketch.approach, "No sketch approach recorded.");
         appendKeyValue(sketch, "Leaf", node.implementationSketch.leafId || node.id || "Not recorded");
@@ -2241,20 +2240,38 @@ function clientScript(): string {
         appendStructuredList(sketch, "Expected Tests", node.implementationSketch.expectedTests, "No expected tests recorded.");
         appendStructuredList(sketch, "Risk Areas", node.implementationSketch.riskAreas, "No sketch risks recorded.");
         appendField(sketch, "Rationale", node.implementationSketch.rationale || "No sketch rationale recorded.");
-      }
-      if (node.sketchScore) {
-        var sketchMetrics = document.createElement("div");
-        sketchMetrics.className = "mini-metrics";
-        appendMiniMetric(sketchMetrics, "Acceptance", formatScore(node.sketchScore.acceptanceCoverage));
-        appendMiniMetric(sketchMetrics, "Verification", formatScore(node.sketchScore.verificationPlanQuality));
-        appendMiniMetric(sketchMetrics, "Blast radius", formatScore(node.sketchScore.lowBlastRadius));
-        appendMiniMetric(sketchMetrics, "Risk", formatScore(node.sketchScore.riskReduction));
-        appendMiniMetric(sketchMetrics, "Complexity pen.", formatScore(node.sketchScore.complexityPenalty));
-        appendMiniMetric(sketchMetrics, "Uncertainty pen.", formatScore(node.sketchScore.uncertaintyPenalty));
-        sketch.appendChild(sketchMetrics);
-        appendField(sketch, "Sketch Rationale", node.sketchScore.rationale || "No sketch score rationale recorded.");
+        var ce = node.implementationSketch.criticEvaluation;
+        if (ce) {
+          var axes = section("Critic Decision Axes");
+          appendKeyValue(axes, "Reversibility", (ce.reversibility.value || "n/a") + " — " + (ce.reversibility.note || ""));
+          appendKeyValue(axes, "Blast radius", (ce.blastRadius.value || "n/a") + " — " + (ce.blastRadius.note || ""));
+          appendKeyValue(axes, "Time to signal", (ce.timeToSignal.value || "n/a") + " — " + (ce.timeToSignal.note || ""));
+          appendField(axes, "Counter-case", ce.counterCase || "None recorded.");
+          appendField(axes, "Falsifier", ce.falsifier || "None recorded.");
+          sketch.appendChild(axes);
+        }
       }
       refs.tabContent.appendChild(sketch);
+    }
+
+    if (node.context && node.context.coverageAudit) {
+      var audit = node.context.coverageAudit;
+      var auditSection = section("Coverage Audit");
+      if (audit.coverageGaps && audit.coverageGaps.length > 0) {
+        var gapList = document.createElement("ul");
+        gapList.className = "gap-list";
+        audit.coverageGaps.forEach(function (gap) {
+          var li = document.createElement("li");
+          li.textContent = gap.dimension + ": " + gap.reason;
+          gapList.appendChild(li);
+        });
+        auditSection.appendChild(gapList);
+      } else {
+        appendKeyValue(auditSection, "Gaps", "None — all required dimensions addressed.");
+      }
+      if (audit.followUpRoundFired) appendKeyValue(auditSection, "Follow-up round", "Yes");
+      appendField(auditSection, "Premortem", audit.premortem || "None recorded.");
+      refs.tabContent.appendChild(auditSection);
     }
 
     if (node.executionResult) {

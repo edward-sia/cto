@@ -36,6 +36,10 @@ src/
 ├── agents/definitions.ts     # Agent system prompts + role configs
 ├── debate/engine.ts          # Round-table debate engine
 ├── orchestrator/orchestrator.ts  # Main tree orchestration loop
+├── critic/critic.ts          # Critic: coverage audit (CONSENSUS), alternative attack (DIVERGING), sketch (LEAF)
+├── critic/types.ts           # CriticChoiceEvaluation (5 axes) and CriticCoverageAudit types
+├── critic/dimensions.ts      # Fixed-core + intent-derived coverage dimensions
+├── critic/sketch-ranker.ts   # Deterministic leaf ranker over Critic axes (replaces LeafSketchScore)
 ├── execution/codex-client.ts # Codex SDK integration
 ├── verification/runner.ts    # Post-leaf verification command runner
 ├── judge/judge.ts            # LLM scoring engine
@@ -93,7 +97,7 @@ npx tsx src/cli/index.ts resume <run-id>  # Resume
 
 ## Current Status
 
-**Phases 1–4, evolutionary foundation, cost-control foundation, interactive plan gate, and saved-run UI complete.** The CLI runs end-to-end with intent decomposition/dossiers, dynamic specialist selection, verified ground-truth inputs, progressive branch pruning, compact debate context, deterministic caching, sketch-first leaf ranking, narrowed Codex execution, optional post-leaf verification, fitness ranking, pre-run cost estimation, optional human review before execution, Codex usage breakdown, and a local browser UI for inspecting saved trees. Use `--dry-run` for tree-shape testing without LLM, verification, or Codex calls.
+**Phases 1–4, evolutionary foundation, cost-control foundation, interactive plan gate, saved-run UI, and the Critic pre-execution evaluator complete.** The CLI runs end-to-end with intent decomposition/dossiers, dynamic specialist selection, intent-derived coverage dimensions, pre-branch alternative attacks, consensus gap audits, Critic-ranked sketch-first leaf execution, narrowed Codex execution, optional post-leaf verification, fitness ranking, pre-run cost estimation, optional human review before execution, Codex usage breakdown, and a local browser UI with Critic Decision Axes and Coverage Audit sections in the leaf inspector. Use `--dry-run` for tree-shape testing without LLM, verification, or Codex calls.
 
 ## Work Plan
 

@@ -152,7 +152,7 @@ Provider metadata lives in `src/providers/llm-provider.ts`; persisted runs store
 - [x] Internal model cascade — `RunConfig.modelTiers` and `modelAssignments` route analyzer, moderator, debate, sketch, synthesis, and judge stages without adding CLI flags; all tiers default to the selected model for compatibility.
 - [x] Compact debate context — `CompactDebateState` carries accepted facts, locked decisions, live alternatives, rejected alternatives, risks, verification ideas, and a concise last-round summary into later rounds.
 - [x] Deterministic cache — `.cambrian-tree/cache/` stores stable analysis, dossier, compact-summary, verification, and judge outputs keyed by prompt version, provider/model, normalized input, and repo/artifact fingerprints.
-- [x] Sketch-first execution — implementation leaves receive `LeafImplementationSketch` and `LeafSketchScore`; CTO executes the top two ranked sketches by default and records skipped execution reasons for the rest.
+- [x] Sketch-first execution — implementation leaves receive `LeafImplementationSketch` with embedded `CriticChoiceEvaluation`; CTO executes the top two ranked sketches by default (deterministic axis ranker, no `LeafSketchScore`) and records skipped execution reasons for the rest.
 - [x] Verification fallback — if selected leaves all fail required verification, CTO executes the next best skipped sketch before judging.
 
 ### Evolutionary foundation ✅
@@ -175,11 +175,22 @@ Provider metadata lives in `src/providers/llm-provider.ts`; persisted runs store
 - [x] Decisions persist as `TreeNode.humanIntervention`; revision prompts flow through `NodeContext.humanRevisionPrompt`.
 - [x] `cto resume` preserves reviewed leaves and continues unreviewed interactive gates without re-prompting completed decisions.
 
+### Critic pre-execution evaluator ✅
+- [x] `src/critic/critic.ts` — Critic class with three modes: `auditCoverage` (CONSENSUS gate), `evaluateAlternative` (DIVERGING gate), `evaluateSketch` (LEAF — replaces former sketcher).
+- [x] `src/critic/types.ts` — `CriticChoiceEvaluation` (5-axis decision schema: reversibility, blastRadius, timeToSignal, counterCase, falsifier) and `CriticCoverageAudit` (gap list + premortem).
+- [x] `src/critic/dimensions.ts` — five fixed-core dimensions always audited plus `deriveIntentDimensions` for intent-keyword-based extension (security, performance, compliance, accessibility, concurrency).
+- [x] `src/critic/sketch-ranker.ts` — deterministic top-K ranker over Critic axes and sketch tie-breakers; replaces `LeafSketchScore` composite.
+- [x] CONSENSUS firing point: orchestrator invokes `auditCoverage` after moderator reaches consensus; if gaps remain a one-shot follow-up debate round fires, then gaps are recorded on `NodeContext.coverageAudit`.
+- [x] DIVERGING firing point: orchestrator attacks each surviving alternative with `evaluateAlternative`; uniformly-bad alternatives (one-way + high blast + no real falsifier) are demoted to `killedAlternatives` before subtrees are committed.
+- [x] LEAF firing point: `evaluateSketch` replaces `LeafSketcher`; sketch and Critic axes produced in one structured-output call. `LeafSketchScore` type and schema removed entirely.
+- [x] Intent-derived dimensions: `IntentDossierBuilder.build` calls `deriveIntentDimensions` on both the LLM-generated dossier and the fallback, so security/performance/etc dimensions are set whenever the intent text warrants them.
+- [x] Coverage gaps surfaced in `cto tree` (yellow `[!N gaps]` badge), `cto show` (Coverage Gaps section), and the saved-run UI leaf inspector (Coverage Audit + Critic Decision Axes sections).
+
 ### Saved-run UI ✅
 - [x] `cto ui [run-id]` launches a local browser explorer for `.cambrian-tree` runs
 - [x] Saved run picker with status, leaf count, and best fitness/score
 - [x] SVG tree canvas with node selection, phase/status styling, fitness-aware score badges, zoom controls, and show-pruned toggle
-- [x] Node inspector tabs for summary, debate, context, and leaf execution/scoring/fitness details
+- [x] Node inspector tabs for summary, debate, context, and leaf execution/scoring/fitness details; leaf tab now shows Critic Decision Axes and Coverage Audit sections
 - [x] Local JSON API routes with run-id validation before state loading
 
 ## Conventions

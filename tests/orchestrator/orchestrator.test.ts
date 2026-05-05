@@ -504,7 +504,7 @@ const fakeSketch = (id: string): LeafImplementationSketch => ({
 
 function fakeLeaf(
   id: string,
-  sketchScore: number,
+  _rankHint: number,
   skippedExecutionReason?: string,
   requiredFailed?: number
 ): TreeNode {
@@ -518,17 +518,6 @@ function fakeLeaf(
     children: [],
     branchLabel: id,
     branchDescription: id,
-    sketchScore: {
-      leafId: id,
-      acceptanceCoverage: sketchScore,
-      verificationPlanQuality: sketchScore,
-      lowBlastRadius: sketchScore,
-      riskReduction: sketchScore,
-      complexityPenalty: 0,
-      uncertaintyPenalty: 0,
-      composite: sketchScore,
-      rationale: "test",
-    },
     implementationSketch: fakeSketch(id),
     skippedExecutionReason,
     executionResult: requiredFailed === undefined ? undefined : {

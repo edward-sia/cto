@@ -161,11 +161,11 @@ Return JSON:
   "confidence": 0.0-1.0,
   "rationale": "why this is viable",
   "criticEvaluation": {
-    "reversibility": { "value": "...", "note": "..." },
-    "blastRadius":   { "value": "...", "note": "..." },
-    "timeToSignal":  { "value": "...", "note": "..." },
-    "counterCase": "...",
-    "falsifier": "..."
+    "reversibility": { "value": "one-way" | "reversible-with-effort" | "freely-reversible", "note": "one-line concrete reason" },
+    "blastRadius":   { "value": "low" | "medium" | "high", "note": "what or who is affected if wrong" },
+    "timeToSignal":  { "value": "fast" | "medium" | "slow", "note": "what signal you would watch and how soon it appears" },
+    "counterCase": "strongest argument against this approach",
+    "falsifier": "concrete observable that would prove this approach wrong"
   }
 }`;
 

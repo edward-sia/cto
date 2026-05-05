@@ -5,7 +5,6 @@ import type {
   FitnessScore,
   JudgeScore,
   LeafImplementationSketch,
-  LeafSketchScore,
   NodeContext,
   ToolEvidence,
   ToolRequest,
@@ -44,7 +43,6 @@ export interface InspectorViewModel {
     score?: JudgeScore;
     fitness?: FitnessScore;
     implementationSketch?: LeafImplementationSketch;
-    sketchScore?: LeafSketchScore;
     skippedExecutionReason?: string;
     filesChanged: string[];
   };
@@ -79,12 +77,11 @@ export function buildInspector(node: TreeNode): InspectorViewModel {
       evidence: node.context.toolEvidence ?? [],
     },
     leaf:
-      node.executionResult || node.score || node.implementationSketch || node.skippedExecutionReason
+      node.executionResult != null || node.score != null || node.implementationSketch != null || node.skippedExecutionReason != null
         ? {
             executionResult: node.executionResult,
             score: node.score,
             ...(node.implementationSketch ? { implementationSketch: node.implementationSketch } : {}),
-            ...(node.sketchScore ? { sketchScore: node.sketchScore } : {}),
             ...(node.skippedExecutionReason ? { skippedExecutionReason: node.skippedExecutionReason } : {}),
             ...(node.fitness ? { fitness: node.fitness } : {}),
             filesChanged: node.executionResult?.filesChanged ?? [],

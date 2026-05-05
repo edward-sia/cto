@@ -35,7 +35,6 @@ import { IntentDecomposer } from "../analyzer/intent-decomposer.js";
 import { IntentDossierBuilder } from "../analyzer/intent-dossier.js";
 import { DebateEngine, type DebateProgressEvent } from "../debate/engine.js";
 import { CodexExecutor } from "../execution/codex-client.js";
-import { LeafSketcher } from "../execution/sketcher.js";
 import { Critic } from "../critic/critic.js";
 import { rankSketches } from "../critic/sketch-ranker.js";
 import type { LeafImplementationSketch } from "../types/index.js";
@@ -139,7 +138,6 @@ export class TreeOrchestrator {
   private decomposer: IntentDecomposer;
   private dossierBuilder: IntentDossierBuilder;
   private synthesizer: Synthesizer;
-  private sketcher: LeafSketcher;
   private critic: Critic;
   private cache: DeterministicCache;
   private repoFingerprint: string;
@@ -172,12 +170,6 @@ export class TreeOrchestrator {
     this.decomposer = new IntentDecomposer(openai, modelForStage(this.config, "decomposer"), this.config.dryRun);
     this.dossierBuilder = new IntentDossierBuilder(openai, modelForStage(this.config, "dossier"), this.config.dryRun);
     this.synthesizer = new Synthesizer(openai, modelForStage(this.config, "synthesis"), this.config.dryRun);
-    this.sketcher = new LeafSketcher(
-      openai,
-      modelForStage(this.config, "sketch"),
-      modelForStage(this.config, "sketchJudge"),
-      this.config.dryRun
-    );
     this.critic = new Critic({
       openai: this.openai,
       model: modelForStage(this.config, "sketchJudge"),
@@ -394,12 +386,6 @@ export class TreeOrchestrator {
     });
     this.judge = new Judge(this.openai, modelForStage(this.config, "judge"), this.config.dryRun);
     this.synthesizer = new Synthesizer(this.openai, modelForStage(this.config, "synthesis"), this.config.dryRun);
-    this.sketcher = new LeafSketcher(
-      this.openai,
-      modelForStage(this.config, "sketch"),
-      modelForStage(this.config, "sketchJudge"),
-      this.config.dryRun
-    );
     this.critic = new Critic({
       openai: this.openai,
       model: modelForStage(this.config, "sketchJudge"),

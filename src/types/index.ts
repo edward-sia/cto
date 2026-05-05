@@ -427,18 +427,6 @@ export interface LeafImplementationSketch {
   criticEvaluation: CriticChoiceEvaluation;
 }
 
-export interface LeafSketchScore {
-  leafId: string;
-  acceptanceCoverage: number;
-  verificationPlanQuality: number;
-  lowBlastRadius: number;
-  riskReduction: number;
-  complexityPenalty: number;
-  uncertaintyPenalty: number;
-  composite: number;
-  rationale: string;
-}
-
 export interface JudgeScore {
   functionalCompleteness: number;
   architecturalQuality: number;
@@ -468,7 +456,6 @@ export interface TreeNode {
   toolRequests?: ToolRequest[];
   executionResult?: CodexExecutionResult;
   implementationSketch?: LeafImplementationSketch;
-  sketchScore?: LeafSketchScore;
   skippedExecutionReason?: string;
   score?: JudgeScore;
   fitness?: FitnessScore;

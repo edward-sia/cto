@@ -1,10 +1,12 @@
-import OpenAI from "openai";
 import { AGENT_DEFINITIONS } from "../agents/definitions.js";
 import { TaskAnalysisSchema } from "../schemas/index.js";
 import type { AgentRole, LLMUsage, TaskAnalysis } from "../types/index.js";
 import { AGENT_ROLES } from "../types/index.js";
+import type { LLMClient } from "../providers/llm-provider.js";
+import { formatLLMError } from "../utils/llm-errors.js";
+import { parseJsonObject } from "../utils/json.js";
 import { withRetry } from "../utils/retry.js";
-import { addUsageFromResponse, emptyUsage } from "../utils/usage.js";
+import { addUsage, emptyUsage } from "../utils/usage.js";
 
 const DEFAULT_IMPLEMENTATION_AGENTS: AgentRole[] = [
   "product-manager",
@@ -30,13 +32,13 @@ const DEFAULT_ANALYSIS: TaskAnalysis = {
 const VALID_ROLES = new Set<string>(AGENT_ROLES);
 
 export class TaskAnalyzer {
-  private openai: OpenAI;
+  private llm: LLMClient;
   private model: string;
   private dryRun: boolean;
   private usage: LLMUsage = emptyUsage();
 
-  constructor(openai: OpenAI, model: string, dryRun = false) {
-    this.openai = openai;
+  constructor(llm: LLMClient, model: string, dryRun = false) {
+    this.llm = llm;
     this.model = model;
     this.dryRun = dryRun;
   }
@@ -84,22 +86,28 @@ Respond with ONLY valid JSON - no markdown, no explanation:
   "rationale": "One sentence explaining the selection"
 }`;
 
+    let content: string;
     try {
       const response = await withRetry(() =>
-        this.openai.chat.completions.create({
+        this.llm.createChatCompletion({
           model: this.model,
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: `Intent: ${intent}` },
           ],
           temperature: 0.2,
-          max_tokens: 512,
+          maxTokens: 512,
         })
       );
-      addUsageFromResponse(this.usage, response);
-      const content = response.choices[0]?.message?.content ?? "";
-      const jsonStr = content.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-      const raw = TaskAnalysisSchema.parse(JSON.parse(jsonStr));
+      addUsage(this.usage, response.usage);
+      content = response.text;
+    } catch (error) {
+      console.warn(`\nTaskAnalyzer: LLM request failed, using default panel (${formatLLMError(error)})`);
+      return DEFAULT_ANALYSIS;
+    }
+
+    try {
+      const raw = TaskAnalysisSchema.parse(parseJsonObject(content));
       const selectedAgents = normalizeSelectedAgents(raw.runMode, raw.selectedAgents);
 
       return {

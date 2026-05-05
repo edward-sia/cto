@@ -1,8 +1,10 @@
-import OpenAI from "openai";
 import { IntentDecompositionSchema } from "../schemas/index.js";
 import type { IntentDecomposition, LLMUsage } from "../types/index.js";
+import type { LLMClient } from "../providers/llm-provider.js";
+import { formatLLMError } from "../utils/llm-errors.js";
+import { parseJsonObject } from "../utils/json.js";
 import { withRetry } from "../utils/retry.js";
-import { addUsageFromResponse, emptyUsage } from "../utils/usage.js";
+import { addUsage, emptyUsage } from "../utils/usage.js";
 
 const EMPTY_DECOMPOSITION: IntentDecomposition = {
   loadBearingClaims: [],
@@ -40,13 +42,13 @@ Output ONLY valid JSON with this shape:
 }`;
 
 export class IntentDecomposer {
-  private openai: OpenAI;
+  private llm: LLMClient;
   private model: string;
   private dryRun: boolean;
   private usage: LLMUsage = emptyUsage();
 
-  constructor(openai: OpenAI, model: string, dryRun = false) {
-    this.openai = openai;
+  constructor(llm: LLMClient, model: string, dryRun = false) {
+    this.llm = llm;
     this.model = model;
     this.dryRun = dryRun;
   }
@@ -58,22 +60,28 @@ export class IntentDecomposer {
   async decompose(intent: string): Promise<IntentDecomposition> {
     if (this.dryRun) return { ...EMPTY_DECOMPOSITION };
 
+    let content: string;
     try {
       const response = await withRetry(() =>
-        this.openai.chat.completions.create({
+        this.llm.createChatCompletion({
           model: this.model,
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
             { role: "user", content: `Intent: ${intent}` },
           ],
           temperature: 0.2,
-          max_tokens: 1024,
+          maxTokens: 1024,
         })
       );
-      addUsageFromResponse(this.usage, response);
-      const content = response.choices[0]?.message?.content ?? "";
-      const jsonStr = content.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-      return IntentDecompositionSchema.parse(JSON.parse(jsonStr));
+      addUsage(this.usage, response.usage);
+      content = response.text;
+    } catch (error) {
+      console.warn(`\nIntentDecomposer: LLM request failed, continuing without scaffold (${formatLLMError(error)})`);
+      return { ...EMPTY_DECOMPOSITION };
+    }
+
+    try {
+      return IntentDecompositionSchema.parse(parseJsonObject(content));
     } catch {
       console.warn("\nIntentDecomposer: failed to decompose intent, continuing without scaffold");
       return { ...EMPTY_DECOMPOSITION };

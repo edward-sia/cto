@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import OpenAI from "openai";
 import { Judge } from "../../src/judge/judge.js";
 import type { TreeNode } from "../../src/types/index.js";
+import { makeMockLLM } from "../helpers/llm.js";
+import type { LLMClient } from "../../src/providers/llm-provider.js";
 
 function makeNode(overrides: Partial<TreeNode["context"]> = {}): TreeNode {
   return {
@@ -31,19 +32,6 @@ function makeNode(overrides: Partial<TreeNode["context"]> = {}): TreeNode {
   } as TreeNode;
 }
 
-function makeMockOpenAI(scoreJson: object): OpenAI {
-  return {
-    chat: {
-      completions: {
-        create: vi.fn().mockResolvedValue({
-          choices: [{ message: { content: JSON.stringify(scoreJson) } }],
-          usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
-        }),
-      },
-    },
-  } as unknown as OpenAI;
-}
-
 const VALID_SCORE = {
   functionalCompleteness: 9,
   architecturalQuality: 8,
@@ -57,8 +45,8 @@ const VALID_SCORE = {
 
 describe("Judge — domain facts synthesis", () => {
   it("includes acceptance criteria as domain constraints when domainFacts is null", async () => {
-    const openai = makeMockOpenAI(VALID_SCORE);
-    const judge = new Judge(openai, "gpt-4o");
+    const llm = makeMockLLM(JSON.stringify(VALID_SCORE), { inputTokens: 100, outputTokens: 50 });
+    const judge = new Judge(llm, "gpt-4o");
     const node = makeNode({
       acceptanceCriteria: [
         "Test: Concurrent inserts converge — Given two clients insert simultaneously, when ops reach server, then both clients converge",
@@ -68,16 +56,15 @@ describe("Judge — domain facts synthesis", () => {
 
     await judge.score(node);
 
-    const create = openai.chat.completions.create as ReturnType<typeof vi.fn>;
-    const userPrompt = create.mock.calls[0][0].messages[1].content as string;
+    const userPrompt = llm.createChatCompletion.mock.calls[0][0].messages[1].content as string;
     expect(userPrompt).toContain("Concurrent inserts converge");
     expect(userPrompt).toContain("Offline edit replay");
     expect(userPrompt).not.toContain("None provided");
   });
 
   it("uses explicit domainFacts when provided, ignoring synthesis", async () => {
-    const openai = makeMockOpenAI(VALID_SCORE);
-    const judge = new Judge(openai, "gpt-4o");
+    const llm = makeMockLLM(JSON.stringify(VALID_SCORE), { inputTokens: 100, outputTokens: 50 });
+    const judge = new Judge(llm, "gpt-4o");
     const node = makeNode({
       domainFacts: {
         domain: "External CRM",
@@ -89,28 +76,26 @@ describe("Judge — domain facts synthesis", () => {
 
     await judge.score(node);
 
-    const create = openai.chat.completions.create as ReturnType<typeof vi.fn>;
-    const userPrompt = create.mock.calls[0][0].messages[1].content as string;
+    const userPrompt = llm.createChatCompletion.mock.calls[0][0].messages[1].content as string;
     expect(userPrompt).toContain("External CRM");
     expect(userPrompt).toContain("No phone field in export");
   });
 
   it("falls back to general robustness message when no criteria or facts exist", async () => {
-    const openai = makeMockOpenAI(VALID_SCORE);
-    const judge = new Judge(openai, "gpt-4o");
+    const llm = makeMockLLM(JSON.stringify(VALID_SCORE), { inputTokens: 100, outputTokens: 50 });
+    const judge = new Judge(llm, "gpt-4o");
     const node = makeNode();
 
     await judge.score(node);
 
-    const create = openai.chat.completions.create as ReturnType<typeof vi.fn>;
-    const userPrompt = create.mock.calls[0][0].messages[1].content as string;
+    const userPrompt = llm.createChatCompletion.mock.calls[0][0].messages[1].content as string;
     expect(userPrompt).toContain("None provided");
   });
 });
 
 describe("Judge — RWF rubric", () => {
   it("scores real-world fit in terms of behavioral constraints, not only data columns", () => {
-    const judge = new Judge({} as OpenAI, "gpt-4o");
+    const judge = new Judge({ createChatCompletion: vi.fn() } as unknown as LLMClient, "gpt-4o");
     const systemPrompt = judge.systemPrompt;
     expect(systemPrompt).toMatch(/behav|constraint|protocol|converge|reconnect/i);
     expect(systemPrompt).not.toMatch(/columns.*only|only.*columns/i);

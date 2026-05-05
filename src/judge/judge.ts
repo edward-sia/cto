@@ -3,11 +3,12 @@
  * Evaluates on 5 weighted dimensions.
  */
 
-import OpenAI from "openai";
 import type { TreeNode, JudgeScore, LLMUsage, NodeContext } from "../types/index.js";
 import { JudgeScoreSchema } from "../schemas/index.js";
+import type { LLMClient } from "../providers/llm-provider.js";
+import { parseJsonObject } from "../utils/json.js";
 import { withRetry } from "../utils/retry.js";
-import { addUsageFromResponse, emptyUsage } from "../utils/usage.js";
+import { addUsage, emptyUsage } from "../utils/usage.js";
 
 const JUDGE_SYSTEM_PROMPT = `You are an expert software engineering judge. You evaluate code solutions against their original requirements.
 
@@ -67,13 +68,13 @@ Respond with ONLY valid JSON:
 }`;
 
 export class Judge {
-  private openai: OpenAI;
+  private llm: LLMClient;
   private model: string;
   private dryRun: boolean;
   private usage: LLMUsage = emptyUsage();
 
-  constructor(openai: OpenAI, model: string, dryRun = false) {
-    this.openai = openai;
+  constructor(llm: LLMClient, model: string, dryRun = false) {
+    this.llm = llm;
     this.model = model;
     this.dryRun = dryRun;
   }
@@ -125,21 +126,19 @@ Score this solution against all six rubrics. Pay special attention to Real-World
 
     try {
       const response = await withRetry(() =>
-        this.openai.chat.completions.create({
+        this.llm.createChatCompletion({
           model: this.model,
           messages: [
             { role: "system", content: JUDGE_SYSTEM_PROMPT },
             { role: "user", content: userPrompt },
           ],
           temperature: 0.3,
-          max_tokens: 1024,
+          maxTokens: 1024,
         })
       );
-      addUsageFromResponse(this.usage, response);
+      addUsage(this.usage, response.usage);
 
-      const raw = response.choices[0]?.message?.content ?? "";
-      const jsonStr = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-      const parsed = JudgeScoreSchema.parse(JSON.parse(jsonStr));
+      const parsed = JudgeScoreSchema.parse(parseJsonObject(response.text));
 
       parsed.composite = Math.round(
         (parsed.functionalCompleteness * 0.25 +

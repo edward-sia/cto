@@ -1,13 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
-import OpenAI from "openai";
 import { TreeOrchestrator } from "../../src/orchestrator/orchestrator.js";
 import type { Alternative, TreeNode } from "../../src/types/index.js";
+import type { LLMClient } from "../../src/providers/llm-provider.js";
+
+function makeNoopLLM(): LLMClient {
+  return { createChatCompletion: vi.fn() };
+}
 
 describe("TreeOrchestrator", () => {
   it("stores dry-run task analysis and reports it through callbacks", async () => {
     const onAnalysisComplete = vi.fn();
     const orchestrator = new TreeOrchestrator(
-      {} as OpenAI,
+      makeNoopLLM(),
       {
         dryRun: true,
         maxDepth: 1,
@@ -51,7 +55,7 @@ describe("TreeOrchestrator", () => {
       observed.push({ id: run.id, status: run.status, rootId: run.root.id });
     });
     const orchestrator = new TreeOrchestrator(
-      {} as OpenAI,
+      makeNoopLLM(),
       {
         dryRun: true,
         maxDepth: 1,
@@ -73,7 +77,7 @@ describe("TreeOrchestrator", () => {
   });
 
   it("uses phase defaults when selected agents have no primary match for that phase", () => {
-    const orchestrator = new TreeOrchestrator({} as OpenAI, { dryRun: true });
+    const orchestrator = new TreeOrchestrator(makeNoopLLM(), { dryRun: true });
     (orchestrator as unknown as { runState: { selectedAgents: string[] } }).runState = {
       selectedAgents: ["tech-lead", "developer"],
     } as never;
@@ -90,7 +94,7 @@ describe("TreeOrchestrator", () => {
   });
 
   it("falls back to default panel only when analyzer never selected agents", () => {
-    const orchestrator = new TreeOrchestrator({} as OpenAI, { dryRun: true });
+    const orchestrator = new TreeOrchestrator(makeNoopLLM(), { dryRun: true });
     (orchestrator as unknown as { runState: { selectedAgents?: string[] } }).runState = {
       selectedAgents: undefined,
     } as never;
@@ -136,7 +140,7 @@ describe("TreeOrchestrator", () => {
   it("records proceed decisions during the interactive plan gate", async () => {
     const onHumanPlanReview = vi.fn(async () => ({ action: "proceed" as const }));
     const orchestrator = new TreeOrchestrator(
-      {} as OpenAI,
+      makeNoopLLM(),
       {
         dryRun: true,
         interactivePlan: true,
@@ -165,7 +169,7 @@ describe("TreeOrchestrator", () => {
       return { action: "proceed" as const };
     });
     const orchestrator = new TreeOrchestrator(
-      {} as OpenAI,
+      makeNoopLLM(),
       {
         dryRun: true,
         interactivePlan: true,
@@ -193,7 +197,7 @@ describe("TreeOrchestrator", () => {
       .mockResolvedValueOnce({ action: "kill" as const })
       .mockResolvedValue({ action: "proceed" as const });
     const orchestrator = new TreeOrchestrator(
-      {} as OpenAI,
+      makeNoopLLM(),
       {
         dryRun: true,
         interactivePlan: true,
@@ -222,7 +226,7 @@ describe("TreeOrchestrator", () => {
       .mockResolvedValueOnce({ action: "revise" as const, prompt: "Prefer local-first storage." })
       .mockResolvedValue({ action: "proceed" as const });
     const orchestrator = new TreeOrchestrator(
-      {} as OpenAI,
+      makeNoopLLM(),
       {
         dryRun: true,
         interactivePlan: true,
@@ -252,7 +256,7 @@ describe("TreeOrchestrator", () => {
   it("pauses without execution when every candidate leaf is killed", async () => {
     const onHumanPlanReview = vi.fn(async () => ({ action: "kill" as const }));
     const orchestrator = new TreeOrchestrator(
-      {} as OpenAI,
+      makeNoopLLM(),
       {
         dryRun: true,
         interactivePlan: true,
@@ -273,7 +277,7 @@ describe("TreeOrchestrator", () => {
   it("does not re-prompt reviewed leaves when resuming a paused interactive run", async () => {
     const initialReview = vi.fn(async () => ({ action: "kill" as const }));
     const firstOrchestrator = new TreeOrchestrator(
-      {} as OpenAI,
+      makeNoopLLM(),
       {
         dryRun: true,
         interactivePlan: true,
@@ -288,7 +292,7 @@ describe("TreeOrchestrator", () => {
 
     const resumeReview = vi.fn(async () => ({ action: "proceed" as const }));
     const resumedOrchestrator = new TreeOrchestrator(
-      {} as OpenAI,
+      makeNoopLLM(),
       { dryRun: true },
       { onHumanPlanReview: resumeReview }
     );

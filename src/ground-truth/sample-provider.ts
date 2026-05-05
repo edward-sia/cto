@@ -1,8 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
-import OpenAI from "openai";
 import { DomainFactsSchema } from "../schemas/index.js";
+import type { LLMClient } from "../providers/llm-provider.js";
 import type { DomainFacts, SchemaField } from "./types.js";
+import { parseJsonObject } from "../utils/json.js";
 
 const EXTRACTION_SYSTEM_PROMPT = `You are a data schema analyst. Given a data sample (CSV or JSON), extract:
 1. The column/field names, their data types, and whether they appear required (present in every row)
@@ -19,7 +20,7 @@ Respond ONLY with valid JSON matching this shape:
 
 export async function loadFromSample(
   filePath: string,
-  openai: OpenAI,
+  llm: LLMClient,
   model: string
 ): Promise<DomainFacts> {
   let raw: string;
@@ -32,7 +33,7 @@ export async function loadFromSample(
   const preview = raw.slice(0, 4000);
 
   try {
-    const response = await openai.chat.completions.create({
+    const response = await llm.createChatCompletion({
       model,
       messages: [
         { role: "system", content: EXTRACTION_SYSTEM_PROMPT },
@@ -42,12 +43,10 @@ export async function loadFromSample(
         },
       ],
       temperature: 0.1,
-      max_tokens: 1024,
+      maxTokens: 1024,
     });
 
-    const content = response.choices[0]?.message?.content ?? "";
-    const jsonStr = content.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-    const parsed = DomainFactsSchema.safeParse(JSON.parse(jsonStr));
+    const parsed = DomainFactsSchema.safeParse(parseJsonObject(response.text));
     if (parsed.success) return parsed.data;
   } catch {
     // fall through to header-only fallback

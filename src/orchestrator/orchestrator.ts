@@ -4,7 +4,6 @@
  * judging, and state persistence.
  */
 
-import OpenAI from "openai";
 import { nanoid } from "nanoid";
 import type {
   TreeNode,
@@ -32,6 +31,7 @@ import { CodexExecutor } from "../execution/codex-client.js";
 import { Judge } from "../judge/judge.js";
 import { FileStore } from "../persistence/file-store.js";
 import { Synthesizer } from "../synthesis/synthesizer.js";
+import type { LLMClient } from "../providers/llm-provider.js";
 
 const DEFAULT_PHASE_DEPTHS: Record<TreePhase, [number, number]> = {
   requirements: [0, 1],
@@ -89,7 +89,7 @@ export interface OrchestratorCallbacks {
 }
 
 export class TreeOrchestrator {
-  private openai: OpenAI;
+  private llm: LLMClient;
   private config: RunConfig;
   private store: FileStore;
   private codex: CodexExecutor;
@@ -102,11 +102,11 @@ export class TreeOrchestrator {
   private configOverrides: Partial<RunConfig>;
 
   constructor(
-    openai: OpenAI,
+    llm: LLMClient,
     config: Partial<RunConfig> = {},
     callbacks: OrchestratorCallbacks = {}
   ) {
-    this.openai = openai;
+    this.llm = llm;
     this.configOverrides = config;
     this.config = { ...DEFAULT_RUN_CONFIG, ...config };
     this.store = new FileStore();
@@ -114,10 +114,10 @@ export class TreeOrchestrator {
       cloudEnv: this.config.cloudEnv,
       cloudAttempts: this.config.cloudAttempts,
     });
-    this.judge = new Judge(openai, this.config.judgeModel, this.config.dryRun);
-    this.analyzer = new TaskAnalyzer(openai, this.config.reasoningModel, this.config.dryRun);
-    this.decomposer = new IntentDecomposer(openai, this.config.reasoningModel, this.config.dryRun);
-    this.synthesizer = new Synthesizer(openai, this.config.reasoningModel, this.config.dryRun);
+    this.judge = new Judge(this.llm, this.config.judgeModel, this.config.dryRun);
+    this.analyzer = new TaskAnalyzer(this.llm, this.config.reasoningModel, this.config.dryRun);
+    this.decomposer = new IntentDecomposer(this.llm, this.config.reasoningModel, this.config.dryRun);
+    this.synthesizer = new Synthesizer(this.llm, this.config.reasoningModel, this.config.dryRun);
     this.callbacks = callbacks;
   }
 
@@ -300,7 +300,7 @@ export class TreeOrchestrator {
     const agents = this.getAgentsForPhase(phase);
 
     const debateEngine = new DebateEngine({
-      openai: this.openai,
+      llm: this.llm,
       reasoningModel: this.config.reasoningModel,
       maxDebateRounds: this.config.maxDebateRounds,
       maxBranching: this.config.maxBranching,

@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import OpenAI from "openai";
 import { Synthesizer } from "../../src/synthesis/synthesizer.js";
 import type { TreeNode } from "../../src/types/index.js";
+import { makeFailingLLM, makeMockLLM } from "../helpers/llm.js";
+import type { LLMClient } from "../../src/providers/llm-provider.js";
 
 function makeLeafNode(overrides: Partial<TreeNode> = {}): TreeNode {
   return {
@@ -23,40 +24,24 @@ function makeLeafNode(overrides: Partial<TreeNode> = {}): TreeNode {
   };
 }
 
-function makeMockOpenAI(content: string): OpenAI {
-  return {
-    chat: {
-      completions: {
-        create: vi.fn().mockResolvedValue({
-          choices: [{ message: { content } }],
-          usage: { total_tokens: 300 },
-        }),
-      },
-    },
-  } as unknown as OpenAI;
-}
-
 describe("Synthesizer", () => {
-  it("returns dry-run document without calling OpenAI", async () => {
-    const mockCreate = vi.fn();
-    const openai = {
-      chat: { completions: { create: mockCreate } },
-    } as unknown as OpenAI;
-    const synthesizer = new Synthesizer(openai, "gpt-4o", true);
+  it("returns dry-run document without calling the LLM", async () => {
+    const llm = { createChatCompletion: vi.fn() } as unknown as LLMClient;
+    const synthesizer = new Synthesizer(llm, "gpt-4o", true);
 
     const result = await synthesizer.synthesize(makeLeafNode());
 
-    expect(mockCreate).not.toHaveBeenCalled();
+    expect(llm.createChatCompletion).not.toHaveBeenCalled();
     expect(result.success).toBe(true);
     expect(result.filesChanged).toHaveLength(0);
     expect(result.output).toContain("[DRY-RUN]");
   });
 
-  it("calls OpenAI and returns synthesis document on success", async () => {
+  it("calls the LLM and returns synthesis document on success", async () => {
     const document =
       "## Research Questions\n- Is GraphQL migration feasible?\n\n## Key Findings\n- Yes, with caveats.";
-    const openai = makeMockOpenAI(document);
-    const synthesizer = new Synthesizer(openai, "gpt-4o", false);
+    const llm = makeMockLLM(document, { inputTokens: 250, outputTokens: 50 });
+    const synthesizer = new Synthesizer(llm, "gpt-4o", false);
 
     const result = await synthesizer.synthesize(makeLeafNode());
 
@@ -66,15 +51,9 @@ describe("Synthesizer", () => {
     expect(result.threadId).toMatch(/^synthesis-/);
   });
 
-  it("returns failure result when OpenAI throws", async () => {
-    const openai = {
-      chat: {
-        completions: {
-          create: vi.fn().mockRejectedValue(new Error("API timeout")),
-        },
-      },
-    } as unknown as OpenAI;
-    const synthesizer = new Synthesizer(openai, "gpt-4o", false);
+  it("returns failure result when the LLM throws", async () => {
+    const llm = makeFailingLLM(new Error("API timeout"));
+    const synthesizer = new Synthesizer(llm, "gpt-4o", false);
 
     const result = await synthesizer.synthesize(makeLeafNode());
 
@@ -83,14 +62,8 @@ describe("Synthesizer", () => {
   });
 
   it("includes ancestor summaries in the prompt when present", async () => {
-    const mockCreate = vi.fn().mockResolvedValue({
-      choices: [{ message: { content: "# Synthesis" } }],
-      usage: { total_tokens: 100 },
-    });
-    const openai = {
-      chat: { completions: { create: mockCreate } },
-    } as unknown as OpenAI;
-    const synthesizer = new Synthesizer(openai, "gpt-4o", false);
+    const llm = makeMockLLM("# Synthesis");
+    const synthesizer = new Synthesizer(llm, "gpt-4o", false);
 
     await synthesizer.synthesize(
       makeLeafNode({
@@ -101,20 +74,14 @@ describe("Synthesizer", () => {
       })
     );
 
-    const callArgs = mockCreate.mock.calls[0][0];
+    const callArgs = llm.createChatCompletion.mock.calls[0][0];
     const userPrompt = callArgs.messages[1].content as string;
     expect(userPrompt).toContain("Redis vs Memcached");
   });
 
   it("includes a human revision prompt in the synthesis prompt", async () => {
-    const mockCreate = vi.fn().mockResolvedValue({
-      choices: [{ message: { content: "# Synthesis" } }],
-      usage: { total_tokens: 100 },
-    });
-    const openai = {
-      chat: { completions: { create: mockCreate } },
-    } as unknown as OpenAI;
-    const synthesizer = new Synthesizer(openai, "gpt-4o", false);
+    const llm = makeMockLLM("# Synthesis");
+    const synthesizer = new Synthesizer(llm, "gpt-4o", false);
 
     await synthesizer.synthesize(
       makeLeafNode({
@@ -126,7 +93,7 @@ describe("Synthesizer", () => {
       })
     );
 
-    const callArgs = mockCreate.mock.calls[0][0];
+    const callArgs = llm.createChatCompletion.mock.calls[0][0];
     const userPrompt = callArgs.messages[1].content as string;
     expect(userPrompt).toContain("Human Revision");
     expect(userPrompt).toContain("Prefer local-first storage.");

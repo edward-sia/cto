@@ -53,7 +53,7 @@ program
   .option("-r, --rounds <n>", "Maximum debate rounds", String(DEFAULT_RUN_CONFIG.maxDebateRounds))
   .option("-m, --model <model>", "Reasoning model", DEFAULT_RUN_CONFIG.reasoningModel)
   .option("--provider <provider>", `LLM provider for debate/judge calls (${LLM_PROVIDER_IDS.join(", ")})`, DEFAULT_RUN_CONFIG.llmProvider)
-  .option("--base-url <url>", "Override the provider's OpenAI-compatible base URL")
+  .option("--base-url <url>", "Override the provider base URL")
   .option("--api-key-env <name>", "Environment variable that contains the provider API key")
   .option("-w, --workdir <path>", "Working directory for Codex", process.cwd())
   .option("--token-budget <n>", "Warn when total tokens exceed this limit")

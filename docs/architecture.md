@@ -28,9 +28,30 @@ Three layers with strict downward dependencies:
 │  Layer 3 — Execution & Judging              │
 │  src/execution/codex-client.ts             │
 │  src/judge/judge.ts                         │
-│  Codex SDK · LLM scoring                   │
+│  Codex SDK · provider-backed LLM scoring   │
 └─────────────────────────────────────────────┘
 ```
+
+Internal LLM calls do not depend on a provider SDK shape directly. Analyzer,
+debate, exploration synthesis, sample ground-truth extraction, and judging all
+call the normalized `LLMClient` boundary in `src/providers/llm-provider.ts`.
+OpenAI, OpenRouter, Gemini, and DeepSeek use the OpenAI-compatible adapter.
+Claude uses Anthropic's native Messages API adapter because its wire format is
+different: system prompts are top-level, `max_tokens` is required, responses
+return text blocks, and authentication uses `x-api-key` plus
+`anthropic-version`. Both adapters normalize text and token/cache telemetry
+before the rest of CTO sees the response.
+
+Structured calls that expect JSON use a shared balanced-object extractor before
+Zod validation. This keeps providers that wrap JSON in prose or markdown fences
+usable while still rejecting invalid schemas. Transport/provider failures, such
+as OpenRouter free-model `429` rate limits, are reported separately from parse
+failures so fallbacks explain the real cause.
+
+Gemini's provider definition sets OpenAI-compatible `reasoning_effort` to
+`minimal`. Gemini 3 defaults to dynamic thinking when no effort is specified,
+which can exhaust CTO's short structured-output budget before the final JSON is
+complete.
 
 ## End-to-End Flow
 

@@ -1,9 +1,9 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import OpenAI from "openai";
 import { loadFromSample } from "../../src/ground-truth/sample-provider.js";
+import { makeMockLLM } from "../helpers/llm.js";
 
 async function writeTempFile(name: string, content: string): Promise<string> {
   const dir = join(tmpdir(), "cto-test-gt-sample");
@@ -33,33 +33,30 @@ const EXTRACTED_FACTS = {
   knownAbsences: ["No sales history column present"],
 };
 
-function makeMockOpenAI(content: string): OpenAI {
-  return {
-    chat: {
-      completions: {
-        create: vi.fn().mockResolvedValue({
-          choices: [{ message: { content } }],
-          usage: { prompt_tokens: 200, completion_tokens: 150, total_tokens: 350 },
-        }),
-      },
-    },
-  } as unknown as OpenAI;
-}
-
 describe("loadFromSample", () => {
   it("extracts DomainFacts from a CSV sample via LLM", async () => {
     const path = await writeTempFile("products.csv", CSV_CONTENT);
-    const openai = makeMockOpenAI(JSON.stringify(EXTRACTED_FACTS));
-    const result = await loadFromSample(path, openai, "gpt-4o");
+    const llm = makeMockLLM(JSON.stringify(EXTRACTED_FACTS), { inputTokens: 200, outputTokens: 150 });
+    const result = await loadFromSample(path, llm, "gpt-4o");
     expect(result.domain).toBe("CSV data sample");
     expect(result.schemas?.[0].fields[0].name).toBe("Handle");
     expect(result.knownAbsences[0]).toBe("No sales history column present");
   });
 
+  it("extracts DomainFacts when the LLM wraps JSON in prose or markdown fences", async () => {
+    const path = await writeTempFile("wrapped.csv", CSV_CONTENT);
+    const llm = makeMockLLM(`Here is the extracted schema:\n\n\`\`\`json\n${JSON.stringify(EXTRACTED_FACTS)}\n\`\`\``);
+
+    const result = await loadFromSample(path, llm, "gpt-4o");
+
+    expect(result.schemas?.[0].fields[0].name).toBe("Handle");
+    expect(result.constraints).toContain("One row per variant");
+  });
+
   it("falls back to header-only extraction when LLM returns invalid JSON", async () => {
     const path = await writeTempFile("bad-response.csv", CSV_CONTENT);
-    const openai = makeMockOpenAI("this is not json at all");
-    const result = await loadFromSample(path, openai, "gpt-4o");
+    const llm = makeMockLLM("this is not json at all");
+    const result = await loadFromSample(path, llm, "gpt-4o");
     expect(result.domain).toContain("bad-response.csv");
     expect(result.schemas?.[0].fields.map((f) => f.name)).toContain("Handle");
     expect(result.schemas?.[0].fields.map((f) => f.name)).toContain("Variant Price");
@@ -68,8 +65,8 @@ describe("loadFromSample", () => {
   });
 
   it("throws when file does not exist", async () => {
-    const openai = makeMockOpenAI("{}");
-    await expect(loadFromSample("/no/such/file.csv", openai, "gpt-4o")).rejects.toThrow(
+    const llm = makeMockLLM("{}");
+    await expect(loadFromSample("/no/such/file.csv", llm, "gpt-4o")).rejects.toThrow(
       "Sample file not found"
     );
   });

@@ -171,7 +171,11 @@ export interface NodeContext {
 export interface LLMUsage {
   inputTokens: number;
   cachedInputTokens: number;
+  cacheWriteTokens?: number;
+  cacheMissInputTokens?: number;
   outputTokens: number;
+  reasoningOutputTokens?: number;
+  providerCost?: number;
 }
 
 export interface CodexUsage {
@@ -225,7 +229,7 @@ export interface TreeNode {
   updatedAt: string;
 }
 
-export type LLMProvider = "openai" | "openrouter" | "gemini" | "deepseek";
+export type LLMProvider = "openai" | "openrouter" | "gemini" | "deepseek" | "claude";
 
 export interface RunConfig {
   maxDepth: number;

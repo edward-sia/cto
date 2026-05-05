@@ -1,7 +1,7 @@
-import OpenAI from "openai";
 import type { CodexExecutionResult, LLMUsage, TreeNode } from "../types/index.js";
+import type { LLMClient } from "../providers/llm-provider.js";
 import { withRetry } from "../utils/retry.js";
-import { addUsageFromResponse, emptyUsage } from "../utils/usage.js";
+import { addUsage, emptyUsage } from "../utils/usage.js";
 
 const SYSTEM_PROMPT = `You are a research synthesizer. Given a debate transcript and accumulated context from an exploration task, produce a structured document.
 
@@ -20,13 +20,13 @@ Use this exact format:
 [Actionable recommendations based on findings]`;
 
 export class Synthesizer {
-  private openai: OpenAI;
+  private llm: LLMClient;
   private model: string;
   private dryRun: boolean;
   private usage: LLMUsage = emptyUsage();
 
-  constructor(openai: OpenAI, model: string, dryRun = false) {
-    this.openai = openai;
+  constructor(llm: LLMClient, model: string, dryRun = false) {
+    this.llm = llm;
     this.model = model;
     this.dryRun = dryRun;
   }
@@ -78,23 +78,23 @@ export class Synthesizer {
 
     try {
       const response = await withRetry(() =>
-        this.openai.chat.completions.create({
+        this.llm.createChatCompletion({
           model: this.model,
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
             { role: "user", content: sections.join("\n\n") },
           ],
           temperature: 0.4,
-          max_tokens: 2048,
+          maxTokens: 2048,
         })
       );
-      addUsageFromResponse(this.usage, response);
+      addUsage(this.usage, response.usage);
 
       return {
         threadId: `synthesis-${node.id}`,
         success: true,
         filesChanged: [],
-        output: response.choices[0]?.message?.content ?? "No synthesis produced.",
+        output: response.text || "No synthesis produced.",
         durationMs: Date.now() - start,
       };
     } catch (error) {

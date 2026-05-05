@@ -1,10 +1,11 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import OpenAI from "openai";
 import { loadGroundTruth } from "../../src/ground-truth/provider.js";
 import type { DomainFacts } from "../../src/ground-truth/types.js";
+import { makeMockLLM } from "../helpers/llm.js";
+import type { LLMClient } from "../../src/providers/llm-provider.js";
 
 async function writeTempFile(name: string, content: string): Promise<string> {
   const dir = join(tmpdir(), "cto-test-gt-factory");
@@ -20,35 +21,22 @@ const VALID_FACTS: DomainFacts = {
   knownAbsences: ["Missing field"],
 };
 
-function makeOpenAI(content: string): OpenAI {
-  return {
-    chat: {
-      completions: {
-        create: vi.fn().mockResolvedValue({
-          choices: [{ message: { content } }],
-          usage: { total_tokens: 100 },
-        }),
-      },
-    },
-  } as unknown as OpenAI;
-}
-
 describe("loadGroundTruth", () => {
   it("routes file: prefix to file provider", async () => {
     const path = await writeTempFile("facts.json", JSON.stringify(VALID_FACTS));
-    const result = await loadGroundTruth(`file:${path}`, {} as OpenAI, "gpt-4o");
+    const result = await loadGroundTruth(`file:${path}`, {} as LLMClient, "gpt-4o");
     expect(result.domain).toBe("Test domain");
   });
 
   it("routes sample: prefix to sample provider", async () => {
     const csv = "Handle,Title\nshirt,Blue Shirt\n";
     const path = await writeTempFile("products.csv", csv);
-    const openai = makeOpenAI(JSON.stringify({
+    const llm = makeMockLLM(JSON.stringify({
       domain: "CSV sample",
       constraints: [],
       knownAbsences: [],
     }));
-    const result = await loadGroundTruth(`sample:${path}`, openai, "gpt-4o");
+    const result = await loadGroundTruth(`sample:${path}`, llm, "gpt-4o");
     expect(result.domain).toBeDefined();
   });
 
@@ -59,20 +47,20 @@ describe("loadGroundTruth", () => {
       paths: { "/items": { get: { summary: "List" } } },
     });
     const path = await writeTempFile("spec.json", spec);
-    const result = await loadGroundTruth(`openapi:${path}`, {} as OpenAI, "gpt-4o");
+    const result = await loadGroundTruth(`openapi:${path}`, {} as LLMClient, "gpt-4o");
     expect(result.domain).toContain("My API");
     expect(result.apiEndpoints?.[0].path).toBe("/items");
   });
 
   it("throws on unknown prefix", async () => {
     await expect(
-      loadGroundTruth("unknown:/some/path", {} as OpenAI, "gpt-4o")
+      loadGroundTruth("unknown:/some/path", {} as LLMClient, "gpt-4o")
     ).rejects.toThrow('Unknown ground truth source "unknown"');
   });
 
   it("throws when path is empty after prefix", async () => {
     await expect(
-      loadGroundTruth("file:", {} as OpenAI, "gpt-4o")
+      loadGroundTruth("file:", {} as LLMClient, "gpt-4o")
     ).rejects.toThrow("path must be non-empty");
   });
 });

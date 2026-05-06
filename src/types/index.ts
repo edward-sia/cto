@@ -16,6 +16,7 @@ export type { DomainFacts };
 import type {
   CriticChoiceEvaluation,
   CriticCoverageAudit,
+  CoverageGap,
   CoverageDimension,
 } from "../critic/types.js";
 export type {
@@ -348,6 +349,7 @@ export interface NodeContext {
   testStrategy?: string;
   ancestorSummaries: string[];
   coverageAudit?: CriticCoverageAudit;
+  openCoverageGaps?: CoverageGap[];
 }
 
 export interface LLMUsage {

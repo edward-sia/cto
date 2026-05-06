@@ -1023,6 +1023,9 @@ For codebase or repository structure research, request \`repo-map\` when availab
     input.context.architectureDecisions?.length
       ? `## Locked Decisions (settled by ancestor consensus — DO NOT reopen or propose alternatives to these)\n${input.context.architectureDecisions.map((d) => `- ${d}`).join("\n")}\n\nBuild on top of these. If you genuinely disagree, raise a concern inline — but do not surface them as ALTERNATIVE [...]; they are not branching points.`
       : "",
+    input.context.openCoverageGaps?.length
+      ? `## Open Coverage Concerns (identified by Critic — address these in your contribution)\n${input.context.openCoverageGaps.map((g) => `- **${g.dimension}**: ${g.reason}`).join("\n")}\n\nThese were NOT covered in the parent debate. Surface concrete proposals or evidence addressing them.`
+      : "",
     input.context.implementationSpec
       ? `## Implementation Spec\n${input.context.implementationSpec}`
       : "",

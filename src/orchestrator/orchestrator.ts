@@ -482,6 +482,7 @@ export class TreeOrchestrator {
     const prompt = decision.prompt.trim();
     const childContext: NodeContext = {
       ...node.context,
+      coverageAudit: undefined,
       humanRevisionPrompt: prompt,
       ancestorSummaries: [
         ...node.context.ancestorSummaries,
@@ -620,9 +621,17 @@ export class TreeOrchestrator {
       this.callbacks.onBranching?.(node.id, surviving);
 
       for (const alt of surviving) {
+        // Siblings not chosen for this branch: tell descendants they are
+        // explored elsewhere so agents don't re-debate the same comparison.
+        const siblingEntries = surviving
+          .filter((s) => s.id !== alt.id)
+          .map((s) => `Sibling branch (not this path): ${s.label} — ${s.description}`);
+
         const childContext: NodeContext = {
           ...node.context,
           ...transcript.contextUpdates,
+          coverageAudit: undefined,
+          openCoverageGaps: undefined,
           acceptanceCriteria: [...new Set([
             ...(node.context.acceptanceCriteria ?? []),
             ...(transcript.contextUpdates.acceptanceCriteria ?? []),
@@ -631,6 +640,7 @@ export class TreeOrchestrator {
             ...(node.context.architectureDecisions ?? []),
             ...(transcript.contextUpdates.architectureDecisions ?? []),
             `Chosen branch: ${alt.label} — ${alt.description}`,
+            ...siblingEntries,
           ])],
           branchDecision: `${alt.label}: ${alt.description}`,
           ancestorSummaries: [...node.context.ancestorSummaries, transcript.summary],
@@ -675,6 +685,7 @@ export class TreeOrchestrator {
 
     if (audit.coverageGaps.length === 0) {
       node.context.coverageAudit = audit;
+      node.context.openCoverageGaps = undefined;
       this.accumulateLLMUsage(this.critic.llmUsage);
       return;
     }
@@ -699,14 +710,9 @@ export class TreeOrchestrator {
     node: TreeNode,
     gaps: Array<{ dimension: string; reason: string }>
   ): void {
-    // Synthetic-round fallback (cheaper than re-running DebateEngine):
-    // append a gap-driven coverage note to architectureDecisions so
-    // descendants and leaf sketches see the guidance.
-    const focus = gaps.map((g) => `- ${g.dimension}: ${g.reason}`).join("\n");
-    const note = `Coverage follow-up — please address:\n${focus}`;
-    node.context.architectureDecisions = [
-      ...new Set([...(node.context.architectureDecisions ?? []), note]),
-    ];
+    // Expose gaps via a dedicated field so the child's agents and moderator
+    // see them as open concerns, not as locked/settled decisions.
+    node.context.openCoverageGaps = gaps;
   }
 
   private async processConsensusChild(
@@ -719,6 +725,7 @@ export class TreeOrchestrator {
     const childContext: NodeContext = {
       ...node.context,
       ...contextUpdates,
+      coverageAudit: undefined,
       acceptanceCriteria: [...new Set([
         ...(node.context.acceptanceCriteria ?? []),
         ...(contextUpdates.acceptanceCriteria ?? []),

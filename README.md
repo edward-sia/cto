@@ -6,6 +6,20 @@ Cambrian turns a single software intent into an explored solution tree. It decom
 
 It is built for the moment when "ask one agent once" stops being enough: when you want competing implementation strategies, visible trade-offs, resumable execution, and a ranked set of candidate solutions instead of a single opaque answer.
 
+## Project Goals
+
+CTO is designed around five core principles:
+
+1. **Visible deliberation** — the decision trail matters as much as the output. Every branch, rejection, coverage gap, and debate round is saved and inspectable. You can see *why* an approach was chosen, not just *what* it produced.
+
+2. **Competitive alternatives** — strong solutions come from competing strategies, not a single chain of thought. CTO runs independent branches, attacks each alternative adversarially before committing resources, and ranks the survivors by evidence rather than rhetoric.
+
+3. **Human-in-the-loop at the right moment** — human review is expensive and should happen before expensive work, not after. The interactive plan gate lets you redirect, refine, or kill a branch before Codex execution, not after it finishes.
+
+4. **Evidence over invention** — agents must not hallucinate facts, benchmarks, schemas, or constraints. Verified ground truth, allowlisted research tools, and the anti-hallucination persona rules exist to enforce this. Deterministic fitness scoring ensures that a passing verification suite outweighs a persuasive judge narrative.
+
+5. **A system that improves over time** — isolated one-shot runs are a starting point, not the destination. The long-term goal is a system that learns from past run outcomes, routes queries to the right model tier automatically, and accesses real-time evidence without inventing it.
+
 ## Highlights
 
 - **Intent decomposition** — load-bearing claims, undefined terms, scope boundaries, known unknowns, and feasibility flags are extracted before debate.
@@ -422,6 +436,10 @@ When interactive planning is enabled, `TreeNode.humanIntervention` records `proc
 | Cost-control foundation — model cascade, compact context, deterministic cache, sketch-first execution | ✅ Complete |
 | Critic pre-execution evaluator — coverage audit, adversarial alternative attack, leaf decision axes, intent-derived dimensions, two-column leaf dossier in UI | ✅ Complete |
 | Documentation impact guard | ✅ Complete |
+| Real-time research via MCP and tool-use (web-search, web-fetch, docs-fetch wired to live providers) | Planned |
+| Memory system — run-history index, past-outcome seeding for analyzer and agents | Planned |
+| Dynamic model selection and cost-aware fallback (`--budget-mode`, automatic tier routing) | Planned |
+| General refinements — Codex Cloud auto-apply, Claude cache_control injection, structured output mode, UI diff viewer | Planned |
 
 **Phase 2 delivered:** Zod validation on all LLM responses, exponential-backoff retry (3 attempts, 1s/2s/4s), token budget tracking with warnings, graceful Ctrl+C shutdown with state save.
 
@@ -442,6 +460,54 @@ When interactive planning is enabled, `TreeNode.humanIntervention` records `proc
 **Interactive plan gate delivered:** `--interactive-plan` pauses after debate traversal and before leaf execution or synthesis. The human can proceed, revise once with a new prompt that creates a debated `human-revision` child, or kill a branch. Decisions persist into run state and resume without re-prompting already-reviewed leaves. `--ui-review` exposes the same decision flow in the saved-run UI.
 
 **Live run monitor delivered:** `cto ui` launches a dependency-light local browser monitor for saved and running `.cambrian-tree` runs. It includes a run picker, dark SVG tree canvas, node selection, inspector tabs for summary/debate/context/leaf details, score badges, Codex usage totals, server-sent event updates for the selected run, browser controls for pending interactive plan reviews, local JSON/control API routes, and run-id validation before loading state.
+
+## Roadmap — Pre-v1
+
+Four tracks are under active consideration before v1.0. None of the code below exists yet — these are planned features.
+
+### Track 1 — Real-time Research via MCP and Tool-Use
+
+The tool names `web-search`, `web-fetch`, and `docs-fetch` are already allowlisted in the `ToolName` type and the `--tools` flag, but they currently return "unavailable" stub responses instead of live data. Pre-v1, these will be wired to real MCP-compatible providers:
+
+- **web-search** → a search API (e.g. Brave Search, Exa) so agents can find package changelogs, security advisories, and community benchmarks during debate without hallucinating them
+- **web-fetch** → a headless fetch adapter (e.g. Firecrawl, Jina Reader) for structured extraction from documentation pages and issue trackers
+- **docs-fetch** → vendor-specific doc APIs (npm registry, PyPI, crates.io, GitHub API) for authoritative dependency metadata
+
+This track is gated behind provider API keys (real-time web calls cost money). The broker interface is already in place; the work is writing the adapter implementations and exposing provider config through the CLI or environment.
+
+Goal: agents can pull live, sourced evidence during debate. The Research Planner's "UNKNOWN / ASSUMPTION" discipline is the complement — the tool gives the agent real data so it has less reason to invent.
+
+### Track 2 — Memory System
+
+Each CTO run is currently isolated. The orchestrator has no access to prior run outcomes, successful patterns, or known-bad directions from earlier sessions.
+
+Pre-v1 plan:
+- A lightweight run-memory index stored alongside `.cambrian-tree/` that records intent fingerprints, fitness outcomes, judge narrative summaries, and agent context updates from completed runs
+- The analyzer queries this store before building the dossier: seeding accepted facts, known-bad alternatives, and domain decisions that were settled in prior runs
+- The agent prompt builder can inject compact "prior run context" so agents do not re-debate already-resolved questions
+- Memory is opt-in and user-controlled (delete or scope the store)
+
+Goal: repeated runs on similar intents produce higher-quality results faster because settled ground is not re-debated and failed approaches are not re-explored.
+
+### Track 3 — Dynamic Model Selection and Cost-Aware Fallback
+
+`RunConfig.modelTiers` and `modelAssignments` already exist in the type system and default all tiers to the selected model. Pre-v1, the tier system will be extended into a real routing layer:
+
+- **Budget modes** — a `--budget-mode economy|balanced|quality` flag maps to preset tier assignments: economy routes compact summaries, moderator calls on shallow nodes, and sketch ranking to a cheap/fast model; quality routes everything to the configured reasoning model
+- **Automatic fallback** — when a primary model returns a rate-limit or timeout error, the orchestrator falls back to the next cheaper tier for that call rather than failing the run
+- **Non-critical call routing** — compact debate summaries, sketch-ranker calls, and intermediate pruning assessments are candidates for cheaper models; the judge and root-node debate remain on the high-quality tier
+
+Goal: a `--budget-mode economy` run costs 60–80% less than a full-quality run on the same intent with acceptable quality trade-offs on non-critical decisions.
+
+### Track 4 — General Refinements
+
+Smaller improvements that are blocked on the above tracks or polish items for v1:
+
+- **Codex Cloud auto-apply** — the orchestrator currently submits tasks and records task IDs but polling and local diff application is manual. Pre-v1: optional `--cloud-poll` that polls for completion and applies diffs automatically so cloud and local leaf results are handled uniformly.
+- **Claude `cache_control` injection** — CTO records Claude prompt-cache telemetry when it is returned, but does not yet inject `cache_control` blocks on long stable prompts. Adding this for the dossier, agent system prompts, and ground-truth blocks will reduce Anthropic costs on multi-round runs significantly.
+- **Structured output mode** — all providers support structured output or JSON mode to varying degrees. Enabling this across the board will reduce JSON parse failures on constrained models (especially Gemini and DeepSeek at high concurrency).
+- **UI diff viewer** — side-by-side leaf implementation diff, debate replay, and a timeline view for the node inspector are the most-requested UI improvements.
+- **Tool evidence deduplication** — today tool evidence is compacted inline per-agent. Pre-v1: deduplicate across agents, rank by relevance before injection, and surface a tool-evidence summary tab in the UI.
 
 ## License
 

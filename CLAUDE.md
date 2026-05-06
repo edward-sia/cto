@@ -189,6 +189,37 @@ Structured provider responses are parsed through CTO's shared JSON-object extrac
 - [x] Node inspector tabs for summary, debate, context, and leaf execution/scoring/fitness details
 - [x] Local JSON API routes with run-id validation before state loading
 
+### Roadmap — Pre-v1 (Planned)
+
+These tracks are not yet implemented.
+
+**Track 1 — Real-time Research via MCP and Tool-Use**
+- Wire `web-search`, `web-fetch`, `docs-fetch` tool stubs to live MCP-compatible providers
+- `web-search`: Brave Search, Exa, or equivalent for package changelogs, CVEs, benchmarks
+- `web-fetch`: Firecrawl / Jina Reader for structured extraction from documentation
+- `docs-fetch`: vendor doc APIs (npm registry, PyPI, GitHub API) for authoritative dependency metadata
+- ToolBroker interface already exists; work is writing adapters and wiring provider config through CLI/env
+- Gated behind provider API keys; real-time calls cost money
+
+**Track 2 — Memory System**
+- Lightweight run-memory index at `.cambrian-tree/memory/`: intent fingerprints, fitness outcomes, judge summaries, accepted context updates
+- `src/analyzer/`: query index before building dossier; seed accepted facts and known-bad alternatives
+- Agent prompt builder: inject compact prior-run context to skip re-debating settled ground
+- Opt-in, user-controlled scope and deletion
+
+**Track 3 — Dynamic Model Selection and Cost-Aware Fallback**
+- `RunConfig.modelTiers` / `modelAssignments` exist; extend into real routing
+- Add `--budget-mode economy|balanced|quality` flag with preset tier assignments
+- Auto-fallback to next cheaper tier on rate-limit or timeout
+- Route non-critical calls (compact summaries, sketch ranking, shallow moderator) to cheaper tiers; keep judge and root debate on quality tier
+
+**Track 4 — General Refinements**
+- Codex Cloud: `--cloud-poll` flag for automatic task-completion polling and local diff apply
+- Claude provider: inject `cache_control` blocks on dossier, agent system prompts, and ground-truth blocks to reduce Anthropic costs on multi-round runs
+- Structured output mode across all providers to reduce JSON parse failures on constrained models
+- `cto ui`: side-by-side leaf diff viewer, debate replay timeline, tool-evidence summary tab
+- Tool evidence deduplication: rank and deduplicate across agents before injection
+
 ## Conventions
 
 - All files use `.ts` extension with ESM (`"type": "module"` in package.json)

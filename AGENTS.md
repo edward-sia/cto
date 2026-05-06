@@ -199,6 +199,35 @@ Structured provider responses are parsed through CTO's shared JSON-object extrac
 - [x] Node inspector tabs for summary, debate, context, and leaf execution/scoring/fitness details; leaf tab now shows Critic Decision Axes and Coverage Audit sections
 - [x] Local JSON API routes with run-id validation before state loading
 
+### Roadmap — Pre-v1 (Planned)
+
+These tracks are not yet implemented. They represent the planned direction before v1.0.
+
+**Track 1 — Real-time Research via MCP and Tool-Use**
+- Wire `web-search`, `web-fetch`, `docs-fetch` tool stubs to live MCP-compatible providers (Brave Search, Firecrawl, vendor doc APIs)
+- Expose provider config through CLI flags or environment variables
+- ToolBroker interface is already in place; adapter implementations are the remaining work
+- Gated behind provider API keys (real-time web calls cost money)
+- Agents: Research Planner and domain specialists will use live evidence instead of the current "unavailable" stubs
+
+**Track 2 — Memory System**
+- Lightweight run-memory index under `.cambrian-tree/memory/`: intent fingerprints, fitness outcomes, judge summaries, accepted context updates from completed runs
+- Analyzer queries the index before building the dossier; seeds accepted facts, known-bad alternatives, and settled domain decisions
+- Agent prompt builder can inject compact prior-run context so settled ground is not re-debated
+- Memory is opt-in; users control scope and deletion
+
+**Track 3 — Dynamic Model Selection and Cost-Aware Fallback**
+- `RunConfig.modelTiers` and `modelAssignments` already exist; extend into real cost-aware routing
+- `--budget-mode economy|balanced|quality` maps to preset tier assignments
+- Automatic fallback when primary model rate-limits or times out
+- Non-critical calls (compact summaries, sketch ranking, shallow moderator) routed to cheaper tiers; judge and root debate stay on quality tier
+
+**Track 4 — General Refinements**
+- Codex Cloud auto-apply: optional `--cloud-poll` that polls task completion and applies diffs locally
+- Claude `cache_control` injection for dossier, system prompts, and ground-truth blocks to reduce Anthropic costs
+- Structured output mode across all providers to reduce JSON parse failures
+- UI: side-by-side leaf diff viewer, debate replay, tool-evidence summary tab
+
 ## Conventions
 
 - All files use `.ts` extension with ESM (`"type": "module"` in package.json)

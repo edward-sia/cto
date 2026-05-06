@@ -1,0 +1,50 @@
+name: Bug report
+description: Something broke
+labels: [bug]
+body:
+  - type: input
+    id: intent
+    attributes:
+      label: Intent you ran
+      placeholder: '"add authentication to my Express app"'
+    validations:
+      required: false
+
+  - type: input
+    id: command
+    attributes:
+      label: Full command
+      placeholder: "npx tsx src/cli/index.ts run \"...\" --provider claude --depth 3"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened
+      description: Include error output, stack traces, or unexpected behavior
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Node version
+      placeholder: "node --version"
+    validations:
+      required: true
+
+  - type: input
+    id: provider
+    attributes:
+      label: Provider
+      placeholder: openai / openrouter / gemini / deepseek / claude
+    validations:
+      required: false

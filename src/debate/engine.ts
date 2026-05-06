@@ -645,12 +645,16 @@ export class DebateEngine {
 - Out of scope (off-topic — score low on relevanceToIntent if a branch lives here): ${decomp.outOfScope.join("; ") || "(none)"}\n`
       : "";
 
+    const openCoverageGapsSection = context.openCoverageGaps?.length
+      ? `\n## Open Coverage Concerns (flag from Critic audit — your assessment should note whether these were addressed)\n${context.openCoverageGaps.map((g) => `- **${g.dimension}**: ${g.reason}`).join("\n")}\nThese are UNRESOLVED concerns, not locked decisions. Agents should address them; if they did, note it in your summary.\n`
+      : "";
+
     const userPrompt = `# Debate Transcript
 
 ## Context
 Original intent: ${context.originalIntent}
 ${context.branchDecision ? `Branch decision: ${context.branchDecision}` : ""}
-${decompositionFrame}${lockedSection}
+${decompositionFrame}${lockedSection}${openCoverageGapsSection}
 ## Compact Prior Debate State
 ${renderCompactForModerator(compactState)}
 

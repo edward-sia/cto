@@ -13,8 +13,7 @@ export const DEFAULT_LLM_PROVIDER_CONFIG: LLMProviderConfig = {
       label: "OpenRouter",
       apiKeyEnv: "OPENROUTER_API_KEY",
       baseURL: "https://openrouter.ai/api/v1",
-      // defaultModel: "openai/gpt-oss-120b:free",
-      defaultModel: "openrouter/auto",
+      defaultModel: "openai/gpt-oss-120b:free",
       defaultHeaders: {
         "X-Title": "Cambrian Tree Orchestrator",
       },

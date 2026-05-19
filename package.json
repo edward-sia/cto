@@ -33,7 +33,7 @@
     "dev": "tsx src/cli/index.ts",
     "start": "node dist/cli/index.js",
     "lint": "eslint src/",
-    "typecheck": "npm run typecheck:providers && tsc --noEmit",
+    "typecheck": "npm run build:providers && tsc --noEmit",
     "typecheck:providers": "npm --workspace @cto/llm-providers run typecheck",
     "docs:check": "tsx src/docs/impact-check.ts",
     "test": "npm run docs:check && npm run build:providers && vitest run",

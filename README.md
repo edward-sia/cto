@@ -60,6 +60,7 @@ See [docs/architecture.md](docs/architecture.md) for the system diagrams and lay
   - `GEMINI_API_KEY` for `--provider gemini`
   - `DEEPSEEK_API_KEY` for `--provider deepseek`
   - `ANTHROPIC_API_KEY` for `--provider claude`
+  - `EDENAI_API_KEY` for `--provider edenai`
 - OpenAI Codex CLI installed and authenticated (for leaf execution):
   ```bash
   npm install -g @openai/codex
@@ -119,10 +120,10 @@ npx tsx src/cli/index.ts run "Inspect package metadata before choosing dependenc
 
 ### LLM Providers
 
-CTO can run the debate, analyzer, synthesis, and judge calls through provider adapters. OpenAI, OpenRouter, Gemini, and DeepSeek use an OpenAI-compatible adapter; Claude uses Anthropic's native Messages API adapter. Leaf implementation still uses Codex unless the run is in exploration mode or `--dry-run`.
+CTO can run the debate, analyzer, synthesis, and judge calls through a standalone provider runtime in `packages/llm-providers`. OpenAI, OpenRouter, Gemini, DeepSeek, and EdenAI use an OpenAI-compatible adapter; Claude uses Anthropic's native Messages API adapter. Leaf implementation still uses Codex unless the run is in exploration mode or `--dry-run`.
 
 ```bash
-# OpenRouter, default model: qwen/qwen3-coder:free
+# OpenRouter, default model: openai/gpt-oss-120b:free
 OPENROUTER_API_KEY=... cto run "Build X" --provider openrouter
 
 # Google Gemini, default model: gemini-3-flash-preview
@@ -134,15 +135,53 @@ DEEPSEEK_API_KEY=... cto run "Build X" --provider deepseek
 # Claude / Anthropic, default model: claude-sonnet-4-5
 ANTHROPIC_API_KEY=... cto run "Build X" --provider claude
 
+# EdenAI gateway, default model: openai/gpt-4o
+EDENAI_API_KEY=... cto run "Build X" --provider edenai
+
 # Override any provider default
 cto run "Build X" --provider openrouter --model openai/gpt-oss-120b:free
 ```
 
-Provider defaults live in `src/providers/llm-provider.ts`. You can override the provider endpoint or API-key variable with `--base-url` and `--api-key-env`, which is useful for proxies, self-hosted gateways, or alternate provider accounts.
+Provider defaults, model tiers, fallback policy, and adapter selection live in `packages/llm-providers`. `src/providers/llm-provider.ts` is a CTO-facing re-export so existing orchestrator imports stay small. You can still override the provider endpoint or API-key variable with `--base-url` and `--api-key-env`, which is useful for proxies, self-hosted gateways, or alternate provider accounts. EdenAI uses the V3 OpenAI-compatible gateway at `https://api.edenai.run/v3`; model IDs use EdenAI's `provider/model` format, and `--model @edenai` delegates model choice to EdenAI smart routing.
+
+For richer routing, create `llm-providers.config.mjs`, `llm-providers.config.js`, `llm-providers.config.cjs`, or `llm-providers.config.json` in the repo root. When that file exists and the run does not explicitly pass `--provider` or `--model`, CTO maps its internal stages to provider-package tiers (`cheap`, `mid`, `strong`). Each tier is an ordered fallback list, so a free OpenRouter model can fall through to another provider on rate limits, timeouts, overloaded responses, or server errors without adding tier-specific CLI flags.
+
+```json
+{
+  "modelTiers": {
+    "cheap": [
+      { "provider": "openrouter", "model": "openai/gpt-oss-120b:free" },
+      { "provider": "gemini", "model": "gemini-3-flash-preview" }
+    ],
+    "mid": [
+      { "provider": "openrouter", "model": "openai/gpt-oss-120b:free" },
+      { "provider": "deepseek", "model": "deepseek-v4-pro" }
+    ],
+    "strong": [
+      { "provider": "openai", "model": "gpt-4o" },
+      { "provider": "claude", "model": "claude-sonnet-4-5" }
+    ]
+  }
+}
+```
+
+Live provider smoke tests are opt-in because they use real API keys and can fail for current provider-side reasons such as exhausted credits, free-model rate limits, or model availability:
+
+```bash
+# Run every provider with a configured key
+npm run test:live-providers
+
+# Narrow to one or more providers while debugging
+CTO_LIVE_PROVIDER_FILTER=openai npm run test:live-providers
+CTO_LIVE_PROVIDER_FILTER=openai,gemini npm run test:live-providers
+CTO_LIVE_PROVIDER_FILTER=edenai npm run test:live-providers
+```
+
+The live suite checks three things per provider: normalized text/usage/attempt metadata in the provider package, plus CTO-style JSON extraction and a real `TaskAnalyzer` call in CTO's own test tree. Use `CTO_LIVE_<PROVIDER>_MODEL` to override a model for one run, for example `CTO_LIVE_OPENROUTER_MODEL=openai/gpt-oss-120b:free` or `CTO_LIVE_EDENAI_MODEL=anthropic/claude-sonnet-4-5`. `CTO_LIVE_PROVIDER_TIMEOUT_MS` controls the per-request timeout.
 
 Gemini uses OpenAI-compatible `reasoning_effort: "minimal"` by default. Without that, Gemini 3's dynamic thinking can consume the short structured-call budget and truncate JSON responses before CTO can parse them.
 
-OpenRouter `:free` models can return provider-side `429` rate-limit errors under load. CTO reports those as LLM request failures rather than parse failures; retry later or choose another OpenRouter model with `--model` when the free route is saturated.
+OpenRouter `:free` models can return provider-side `429` rate-limit errors under load. Tier-routed runs can fall back to the next candidate for fallback-safe provider failures; explicit `--provider` / `--model` runs keep the old single-model behavior and report the request failure directly.
 
 Claude is the one provider here that is not OpenAI-compatible at the wire level: Anthropic expects a native `/v1/messages` request with top-level `system`, `messages`, `max_tokens`, `x-api-key`, and `anthropic-version`. CTO normalizes that response into the same internal text and token-usage shape used by the OpenAI-compatible providers. Claude prompt-cache telemetry is recorded when returned, but CTO does not inject `cache_control` blocks in this first pass.
 
@@ -169,7 +208,7 @@ Options:
   -r, --rounds <n>           Maximum debate rounds/node        (default: 3)
   -m, --model <model>        Reasoning + judge model           (default: gpt-4o)
       --provider <provider>  LLM provider: openai, openrouter,
-                             gemini, deepseek, or claude
+                             gemini, deepseek, claude, or edenai
       --base-url <url>       Override provider base URL
       --api-key-env <name>   Env var containing the provider API key
   -w, --workdir <path>       Working dir for Codex             (default: cwd)
@@ -331,7 +370,7 @@ Seven knobs still control how much a run will cost:
 4. **Concurrency** — `--leaf-concurrency` controls how many Codex leaf executions run in parallel. Higher = faster wall-clock but more peak load. Doesn't affect total cost.
 5. **Run mode** — exploration mode synthesizes documents from leaf debates and skips Codex execution plus judge scoring.
 6. **Interactive planning** — `--interactive-plan` lets a human kill branches before execution or synthesis, or revise a candidate once so the agents debate the corrected direction before expensive work begins.
-7. **Provider choice** — `--provider openrouter` with `:free` models can make debate and judge calls free within provider limits. Unknown model pricing falls back to GPT-4o rates in estimates so the CLI errs on the conservative side.
+7. **Provider choice** — `--provider openrouter` with `:free` models can make debate and judge calls free within provider limits, while `--provider edenai` can route through EdenAI's single-key gateway to many upstream models. Unknown model pricing falls back to GPT-4o rates in estimates so the CLI errs on the conservative side.
 
 The final summary breaks Codex token usage down by input / cached input / output / reasoning so you can see where the budget went.
 
@@ -438,7 +477,8 @@ When interactive planning is enabled, `TreeNode.humanIntervention` records `proc
 | Documentation impact guard | ✅ Complete |
 | Real-time research via MCP and tool-use (web-search, web-fetch, docs-fetch wired to live providers) | Planned |
 | Memory system — run-history index, past-outcome seeding for analyzer and agents | Planned |
-| Dynamic model selection and cost-aware fallback (`--budget-mode`, automatic tier routing) | Planned |
+| Provider package routing — standalone provider runtime, config-native tiers, fallback lists | ✅ Complete |
+| Dynamic model profiles (`economy`, `balanced`, `quality`) | Planned |
 | General refinements — Codex Cloud auto-apply, Claude cache_control injection, structured output mode, UI diff viewer | Planned |
 
 **Phase 2 delivered:** Zod validation on all LLM responses, exponential-backoff retry (3 attempts, 1s/2s/4s), token budget tracking with warnings, graceful Ctrl+C shutdown with state save.
@@ -491,13 +531,7 @@ Goal: repeated runs on similar intents produce higher-quality results faster bec
 
 ### Track 3 — Dynamic Model Selection and Cost-Aware Fallback
 
-`RunConfig.modelTiers` and `modelAssignments` already exist in the type system and default all tiers to the selected model. Pre-v1, the tier system will be extended into a real routing layer:
-
-- **Budget modes** — a `--budget-mode economy|balanced|quality` flag maps to preset tier assignments: economy routes compact summaries, moderator calls on shallow nodes, and sketch ranking to a cheap/fast model; quality routes everything to the configured reasoning model
-- **Automatic fallback** — when a primary model returns a rate-limit or timeout error, the orchestrator falls back to the next cheaper tier for that call rather than failing the run
-- **Non-critical call routing** — compact debate summaries, sketch-ranker calls, and intermediate pruning assessments are candidates for cheaper models; the judge and root-node debate remain on the high-quality tier
-
-Goal: a `--budget-mode economy` run costs 60–80% less than a full-quality run on the same intent with acceptable quality trade-offs on non-critical decisions.
+The provider runtime now supports config-driven tiers and fallback lists without adding tier-specific CLI flags. CTO maps analyzer, moderator, summarizer, debate, critic/sketch, synthesis, and judge stages onto `cheap`, `mid`, and `strong` tiers. Future work can add named profiles such as `economy`, `balanced`, or `quality` on top of this package-level routing once real usage data shows the presets are worth maintaining.
 
 ### Track 4 — General Refinements
 

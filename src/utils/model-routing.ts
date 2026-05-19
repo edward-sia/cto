@@ -1,4 +1,5 @@
 import type { ModelAssignmentConfig, ModelStage, ModelTier, ModelTierConfig, RunConfig } from "../types/index.js";
+import { tierModelToken } from "../providers/llm-provider.js";
 
 export const DEFAULT_MODEL_ASSIGNMENTS: ModelAssignmentConfig = {
   analyzer: "cheap",
@@ -45,5 +46,7 @@ export function modelForStage(
   stage: ModelStage
 ): string {
   const tier: ModelTier = config.modelAssignments?.[stage] ?? DEFAULT_MODEL_ASSIGNMENTS[stage];
-  return config.modelTiers?.[tier] ?? (stage === "judge" ? config.judgeModel : config.reasoningModel);
+  const tierValue = config.modelTiers?.[tier];
+  if (Array.isArray(tierValue)) return tierModelToken(tier);
+  return tierValue ?? (stage === "judge" ? config.judgeModel : config.reasoningModel);
 }

@@ -269,7 +269,7 @@ describe("CLI", () => {
     );
 
     expect(output).toContain("provider=openrouter");
-    expect(output).toContain("model=qwen/qwen3-coder:free");
+    expect(output).toContain("model=openai/gpt-oss-120b:free");
     expect(output).toContain("Provider:   OpenRouter");
   });
 
@@ -295,6 +295,36 @@ describe("CLI", () => {
     expect(output).toContain("gemini");
     expect(output).toContain("deepseek");
     expect(output).toContain("claude");
+    expect(output).toContain("edenai");
+  });
+
+  it("uses EdenAI default model in dry-run mode", () => {
+    const output = execFileSync(
+      "npx",
+      [
+        "tsx",
+        "src/cli/index.ts",
+        "run",
+        "Build a REST API",
+        "--dry-run",
+        "--depth",
+        "1",
+        "--rounds",
+        "1",
+        "--provider",
+        "edenai",
+      ],
+      {
+        cwd: process.cwd(),
+        encoding: "utf-8",
+        env: { ...process.env, FORCE_COLOR: "0" },
+        stdio: ["ignore", "pipe", "pipe"],
+      }
+    );
+
+    expect(output).toContain("provider=edenai");
+    expect(output).toContain("model=openai/gpt-4o");
+    expect(output).toContain("Provider:   EdenAI");
   });
 
   it("uses Claude default model in dry-run mode", () => {

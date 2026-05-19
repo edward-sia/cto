@@ -20,21 +20,28 @@
     "debate"
   ],
   "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
   "main": "dist/index.js",
   "bin": {
     "cto": "dist/cli/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "npm run build:providers && tsc",
+    "build:providers": "npm --workspace @cto/llm-providers run build",
     "dev": "tsx src/cli/index.ts",
     "start": "node dist/cli/index.js",
     "lint": "eslint src/",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "npm run build:providers && tsc --noEmit",
+    "typecheck:providers": "npm --workspace @cto/llm-providers run typecheck",
     "docs:check": "tsx src/docs/impact-check.ts",
-    "test": "npm run docs:check && vitest run",
-    "test:watch": "vitest"
+    "test": "npm run docs:check && npm run build:providers && vitest run",
+    "test:live-providers": "npm run build:providers && CTO_LIVE_PROVIDER_TESTS=1 vitest run --config vitest.live-providers.config.ts",
+    "test:watch": "npm run build:providers && vitest"
   },
   "dependencies": {
+    "@cto/llm-providers": "file:packages/llm-providers",
     "@openai/codex-sdk": "^0.125.0",
     "chalk": "^5.3.0",
     "commander": "^12.0.0",
@@ -47,7 +54,7 @@
   "devDependencies": {
     "@eslint/js": "^9.39.4",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^22.0.0",
+    "@types/node": "^22.19.19",
     "eslint": "^9.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",

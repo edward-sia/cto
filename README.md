@@ -177,7 +177,7 @@ CTO_LIVE_PROVIDER_FILTER=openai,gemini npm run test:live-providers
 CTO_LIVE_PROVIDER_FILTER=edenai npm run test:live-providers
 ```
 
-The live suite checks three things per provider: normalized text/usage/attempt metadata, CTO-style JSON extraction, and a real `TaskAnalyzer` call that must parse provider output instead of falling back. Use `CTO_LIVE_<PROVIDER>_MODEL` to override a model for one run, for example `CTO_LIVE_OPENROUTER_MODEL=openai/gpt-oss-120b:free` or `CTO_LIVE_EDENAI_MODEL=anthropic/claude-sonnet-4-5`. `CTO_LIVE_PROVIDER_TIMEOUT_MS` controls the per-request timeout.
+The live suite checks three things per provider: normalized text/usage/attempt metadata in the provider package, plus CTO-style JSON extraction and a real `TaskAnalyzer` call in CTO's own test tree. Use `CTO_LIVE_<PROVIDER>_MODEL` to override a model for one run, for example `CTO_LIVE_OPENROUTER_MODEL=openai/gpt-oss-120b:free` or `CTO_LIVE_EDENAI_MODEL=anthropic/claude-sonnet-4-5`. `CTO_LIVE_PROVIDER_TIMEOUT_MS` controls the per-request timeout.
 
 Gemini uses OpenAI-compatible `reasoning_effort: "minimal"` by default. Without that, Gemini 3's dynamic thinking can consume the short structured-call budget and truncate JSON responses before CTO can parse them.
 

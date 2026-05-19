@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_LLM_PROVIDER_CONFIG,
   LLMRouter,
+  type LLMClient,
   type LLMProviderConfig,
   type NormalizedLLMResponse,
-} from "../src/index.js";
+} from "../../src/providers/llm-provider.js";
+import { TaskAnalyzer } from "../../src/analyzer/task-analyzer.js";
+import { parseJsonObject } from "../../src/utils/json.js";
 
 type ProviderId = "openai" | "openrouter" | "gemini" | "deepseek" | "claude" | "edenai";
 
@@ -63,33 +66,61 @@ const LIVE_PROVIDERS: LiveProviderCase[] = [
 
 const describeLive = LIVE_ENABLED ? describe : describe.skip;
 
-describeLive("live provider contract smoke tests", () => {
+describeLive("live CTO provider integration smoke tests", () => {
   for (const providerCase of LIVE_PROVIDERS) {
     const key = process.env[providerCase.keyEnv];
     const model = process.env[providerCase.modelEnv] ?? providerCase.defaultModel;
     const runIfKeyExists = key ? it : it.skip;
 
-    runIfKeyExists(`${providerCase.provider} returns normalized text, usage, and attempts`, async () => {
+    runIfKeyExists(`${providerCase.provider} supports CTO-style structured JSON extraction`, async () => {
       const response = await createLiveRouter(providerCase).createChatCompletion({
         provider: providerCase.provider,
         model,
-        maxTokens: 80,
+        maxTokens: 140,
         timeoutMs: LIVE_REQUEST_TIMEOUT_MS,
         temperature: 0,
         messages: [
           {
             role: "user",
-            content: "Reply with one short sentence: live provider contract ok.",
+            content: `Return only this JSON object, with no markdown:
+{"provider":"${providerCase.provider}","ok":true,"items":[1,2,3]}`,
           },
         ],
       });
 
       expectNormalizedProviderResponse(response, providerCase.provider, model);
-      expect(response.text.trim().length).toBeGreaterThan(0);
+      const parsed = parseJsonObject<{ provider: string; ok: boolean; items: number[] }>(response.text);
+      expect(parsed).toEqual({
+        provider: providerCase.provider,
+        ok: true,
+        items: [1, 2, 3],
+      });
     });
 
+    runIfKeyExists(`${providerCase.provider} can drive CTO TaskAnalyzer output`, async () => {
+      const analyzer = new TaskAnalyzer(createLiveClient(providerCase), model, false);
+
+      const result = await analyzer.analyze("Build a tiny CLI that prints hello");
+
+      expect(result.runMode).toMatch(/^(implementation|exploration)$/);
+      expect(result.selectedAgents.length).toBeGreaterThan(0);
+      expect(result.rationale.length).toBeGreaterThan(0);
+      expect(result.rationale).not.toBe("Default panel (dry-run or analyzer fallback)");
+    });
   }
 });
+
+function createLiveClient(providerCase: LiveProviderCase): LLMClient {
+  const router = createLiveRouter(providerCase);
+  return {
+    createChatCompletion: (request) =>
+      router.createChatCompletion({
+        ...request,
+        provider: request.provider ?? providerCase.provider,
+        timeoutMs: request.timeoutMs ?? LIVE_REQUEST_TIMEOUT_MS,
+      }),
+  };
+}
 
 function createLiveRouter(providerCase: LiveProviderCase): LLMRouter {
   return new LLMRouter({

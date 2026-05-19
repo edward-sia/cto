@@ -12,6 +12,33 @@ import {
 } from "../../src/providers/llm-provider.js";
 
 describe("LLM provider registry", () => {
+  it("supports EdenAI as a first-class OpenAI-compatible provider", () => {
+    expect(LLM_PROVIDER_IDS).toContain("edenai");
+    expect(parseLLMProvider("edenai")).toBe("edenai");
+    expect(getLLMProviderDefinition("edenai")).toMatchObject({
+      adapter: "openai-compatible",
+      apiKeyEnv: "EDENAI_API_KEY",
+      baseURL: "https://api.edenai.run/v3",
+      defaultModel: "openai/gpt-4o",
+    });
+  });
+
+  it("rejects missing EdenAI API keys outside dry-run mode", () => {
+    const previous = process.env.EDENAI_API_KEY;
+    delete process.env.EDENAI_API_KEY;
+    try {
+      expect(() => makeLLMClient({ provider: "edenai", dryRun: false })).toThrow(
+        "EdenAI requires EDENAI_API_KEY"
+      );
+    } finally {
+      if (previous === undefined) {
+        delete process.env.EDENAI_API_KEY;
+      } else {
+        process.env.EDENAI_API_KEY = previous;
+      }
+    }
+  });
+
   it("supports Claude as a first-class provider", () => {
     expect(LLM_PROVIDER_IDS).toContain("claude");
     expect(parseLLMProvider("claude")).toBe("claude");
@@ -71,7 +98,7 @@ describe("OpenAICompatibleLLMClient", () => {
       maxTokens: 128,
     });
 
-    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+    expect(create.mock.calls[0][0]).toEqual(expect.objectContaining({
       reasoning_effort: "minimal",
     }));
   });

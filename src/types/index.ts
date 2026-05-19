@@ -12,6 +12,7 @@
 
 import type { DomainFacts } from "../ground-truth/types.js";
 export type { DomainFacts };
+import type { ModelCandidate as ProviderModelCandidate } from "@cto/llm-providers";
 
 import type {
   CriticChoiceEvaluation,
@@ -383,7 +384,11 @@ export type ModelStage =
   | "judge"
   | "synthesis";
 
-export type ModelTierConfig = Record<ModelTier, string>;
+export type ModelCandidate = ProviderModelCandidate;
+
+export type ModelTierValue = string | ModelCandidate[];
+
+export type ModelTierConfig = Record<ModelTier, ModelTierValue>;
 
 export type ModelAssignmentConfig = Record<ModelStage, ModelTier>;
 
@@ -469,7 +474,7 @@ export interface TreeNode {
   updatedAt: string;
 }
 
-export type LLMProvider = "openai" | "openrouter" | "gemini" | "deepseek" | "claude";
+export type LLMProvider = "openai" | "openrouter" | "gemini" | "deepseek" | "claude" | "edenai" | (string & {});
 
 export interface RunConfig {
   maxDepth: number;

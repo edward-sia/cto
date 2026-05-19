@@ -24,6 +24,7 @@ import { AGENT_DISPLAY_NAMES } from "../types/index.js";
 import {
   LLM_PROVIDER_IDS,
   getLLMProviderDefinition,
+  loadLLMProviderConfig,
   makeLLMClient,
   parseLLMProvider,
   providerLabel,
@@ -31,6 +32,7 @@ import {
 } from "../providers/llm-provider.js";
 import { startUiServer, type StartedUiServer } from "../ui/server.js";
 import { estimateRunCost, formatCostEstimate, priceCodexUsage, priceLLMUsage } from "../utils/cost.js";
+import { defaultModelTiers } from "../utils/model-routing.js";
 import { parsePruneSchedule } from "../utils/pruning.js";
 import { loadGroundTruth } from "../ground-truth/provider.js";
 import type { DomainFacts } from "../ground-truth/types.js";
@@ -97,10 +99,13 @@ program
   .option("-y, --yes", "Skip pre-run cost confirmation", false)
   .action(async (intent: string, opts, command: Command) => {
     const dryRun = Boolean(opts.dryRun);
-    const llmProvider = parseProviderOrExit(opts.provider);
+    const loadedProviderConfig = await loadLLMProviderConfig(process.cwd());
+    const providerWasExplicit = command.getOptionValueSource("provider") !== "default";
+    const llmProvider = parseProviderOrExit(opts.provider, loadedProviderConfig.config);
     const modelWasExplicit = command.getOptionValueSource("model") !== "default";
-    const model = resolveProviderModel(llmProvider, opts.model, modelWasExplicit);
-    const providerDefaults = getLLMProviderDefinition(llmProvider);
+    const useSingleModelOverride = providerWasExplicit || modelWasExplicit || !loadedProviderConfig.path;
+    const model = resolveProviderModel(llmProvider, opts.model, modelWasExplicit, loadedProviderConfig.config);
+    const providerDefaults = getLLMProviderDefinition(llmProvider, loadedProviderConfig.config);
     const llmApiKeyEnv = opts.apiKeyEnv ?? providerDefaults.apiKeyEnv;
     const llmBaseURL = opts.baseUrl ?? providerDefaults.baseURL;
     const spinner = ora();
@@ -178,6 +183,7 @@ program
         enabled: toolUseEnabled,
         allowlist: toolAllowlist,
       },
+      modelTiers: useSingleModelOverride ? defaultModelTiers(model) : loadedProviderConfig.config.modelTiers,
       cloudEnv: opts.cloudEnv,
       cloudAttempts: opts.cloudAttempts ? parseInt(opts.cloudAttempts, 10) : undefined,
     };
@@ -188,6 +194,8 @@ program
       dryRun,
       apiKeyEnv: llmApiKeyEnv,
       baseURL: llmBaseURL,
+      config: loadedProviderConfig.config,
+      skipProviderKeyCheck: !useSingleModelOverride,
     });
 
     let domainFacts: DomainFacts | undefined;
@@ -297,7 +305,8 @@ program
     console.log(chalk.bold.white("\n🌳 Cambrian Tree Orchestrator"));
     console.log(chalk.dim(`Intent: ${intent}`));
     console.log(chalk.dim(`Config: depth=${opts.depth}, branching=${opts.branching}, rounds=${opts.rounds}, provider=${llmProvider}, model=${model}, leaf-concurrency=${opts.leafConcurrency}, prune-threshold=${opts.pruneThreshold}`));
-    console.log(chalk.dim(`LLM: ${providerLabel(fullConfig)}`));
+    console.log(chalk.dim(`LLM: ${providerLabel(fullConfig, loadedProviderConfig.config)}`));
+    if (loadedProviderConfig.path && !useSingleModelOverride) console.log(chalk.dim(`LLM config: ${loadedProviderConfig.path}`));
     console.log(chalk.dim(`Working dir: ${opts.workdir}`));
     if (config.toolUse?.enabled) console.log(chalk.cyan(`Tools: ${config.toolUse.allowlist.join(", ")}`));
     if (opts.cloudEnv) console.log(chalk.cyan(`Codex Cloud: env=${opts.cloudEnv}, attempts=${opts.cloudAttempts ?? 1}`));
@@ -426,6 +435,7 @@ program
   .option("--ui-review", "Use the browser UI for interactive plan decisions", false)
   .action(async (runId: string, opts) => {
     const dryRun = Boolean(opts.dryRun);
+    const loadedProviderConfig = await loadLLMProviderConfig(process.cwd());
     const store = new FileStore();
     const savedRun = await store.load(runId);
     if (!savedRun) {
@@ -433,16 +443,20 @@ program
       process.exit(1);
     }
     const savedProvider = savedRun.config.llmProvider ?? DEFAULT_RUN_CONFIG.llmProvider;
-    const llmProvider = parseProviderOrExit(opts.provider ?? savedProvider);
-    const providerDefaults = getLLMProviderDefinition(llmProvider);
+    const llmProvider = parseProviderOrExit(opts.provider ?? savedProvider, loadedProviderConfig.config);
+    const providerDefaults = getLLMProviderDefinition(llmProvider, loadedProviderConfig.config);
     const model = opts.model ?? savedRun.config.reasoningModel ?? providerDefaults.defaultModel;
     const llmBaseURL = opts.baseUrl ?? savedRun.config.llmBaseURL ?? providerDefaults.baseURL;
     const llmApiKeyEnv = opts.apiKeyEnv ?? savedRun.config.llmApiKeyEnv ?? providerDefaults.apiKeyEnv;
+    const savedTierRouting = Object.values(savedRun.config.modelTiers ?? {}).some(Array.isArray);
+    const useSingleModelOverride = Boolean(opts.provider || opts.model || !savedTierRouting);
     const openai = makeLLMClientOrExit({
       provider: llmProvider,
       dryRun,
       apiKeyEnv: llmApiKeyEnv,
       baseURL: llmBaseURL,
+      config: loadedProviderConfig.config,
+      skipProviderKeyCheck: !useSingleModelOverride,
     });
     const spinner = ora();
     const useUiReview = Boolean(opts.uiReview);
@@ -484,6 +498,8 @@ program
       llmApiKeyEnv,
       reasoningModel: model,
       judgeModel: model,
+      modelTiers: useSingleModelOverride ? defaultModelTiers(model) : savedRun.config.modelTiers,
+      modelAssignments: savedRun.config.modelAssignments,
       ...(opts.leafConcurrency ? { leafConcurrency: parseInt(opts.leafConcurrency, 10) } : {}),
       ...(opts.interactivePlan || useUiReview ? { interactivePlan: true } : {}),
       ...toolUseOverride,
@@ -500,7 +516,7 @@ program
       },
     });
     console.log(chalk.blue(`\nResuming run ${runId}...\n`));
-    console.log(chalk.dim(`LLM: ${providerLabel({ llmProvider, llmBaseURL, llmApiKeyEnv })}, model=${model}`));
+    console.log(chalk.dim(`LLM: ${providerLabel({ llmProvider, llmBaseURL, llmApiKeyEnv }, loadedProviderConfig.config)}, model=${model}`));
     if ("toolUse" in toolUseOverride && toolUseOverride.toolUse?.enabled) {
       console.log(chalk.cyan(`Tools: ${toolUseOverride.toolUse.allowlist.join(", ")}`));
     }
@@ -587,9 +603,9 @@ async function reviewHumanPlan(node: TreeNode, state: RunState): Promise<HumanPl
   }
 }
 
-function parseProviderOrExit(raw: string | undefined): RunConfig["llmProvider"] {
+function parseProviderOrExit(raw: string | undefined, config?: Parameters<typeof parseLLMProvider>[1]): RunConfig["llmProvider"] {
   try {
-    return parseLLMProvider(raw);
+    return parseLLMProvider(raw, config);
   } catch (err) {
     console.error(chalk.red(err instanceof Error ? err.message : String(err)));
     process.exit(1);

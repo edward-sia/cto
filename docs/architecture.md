@@ -35,13 +35,27 @@ Three layers with strict downward dependencies:
 
 Internal LLM calls do not depend on a provider SDK shape directly. Analyzer,
 debate, exploration synthesis, sample ground-truth extraction, and judging all
-call the normalized `LLMClient` boundary in `src/providers/llm-provider.ts`.
-OpenAI, OpenRouter, Gemini, and DeepSeek use the OpenAI-compatible adapter.
-Claude uses Anthropic's native Messages API adapter because its wire format is
-different: system prompts are top-level, `max_tokens` is required, responses
-return text blocks, and authentication uses `x-api-key` plus
-`anthropic-version`. Both adapters normalize text and token/cache telemetry
-before the rest of CTO sees the response.
+call the normalized `LLMClient` boundary exported through
+`src/providers/llm-provider.ts`. That file is now a thin CTO-facing re-export of
+the standalone provider runtime in `packages/llm-providers`.
+
+The provider package owns provider definitions, model tiers, fallback policy,
+usage normalization, error classification, and wire adapters. OpenAI,
+OpenRouter, Gemini, DeepSeek, and EdenAI use the OpenAI-compatible adapter.
+EdenAI points at the V3 gateway base URL (`https://api.edenai.run/v3`) and uses
+EdenAI `provider/model` model IDs. Claude uses Anthropic's native Messages API
+adapter because its wire format is different: system prompts are top-level,
+`max_tokens` is required, responses return text blocks, and authentication uses
+`x-api-key` plus `anthropic-version`. Both adapters normalize text and
+token/cache telemetry before the rest of CTO sees the response.
+
+When `llm-providers.config.mjs`, `.js`, `.cjs`, or `.json` exists in the repo
+root, CTO maps its stages to provider-package tiers instead of adding CLI flags
+for every model slot. A tier is an ordered list of provider/model candidates.
+The package falls through on rate limits, timeouts, overloaded responses, and
+server errors, but stops on authentication, invalid model, invalid request,
+context-length, parse, or schema failures. Explicit `--provider` or `--model`
+keeps the single-provider/model override behavior for a run.
 
 Structured calls that expect JSON use a shared balanced-object extractor before
 Zod validation. This keeps providers that wrap JSON in prose or markdown fences

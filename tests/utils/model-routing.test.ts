@@ -46,6 +46,26 @@ describe("model routing", () => {
     expect(modelForStage(config, "judge")).toBe("strong-model");
   });
 
+  it("returns a tier route token when a stage uses provider-native fallback candidates", () => {
+    const config = {
+      reasoningModel: "reasoning",
+      judgeModel: "judge",
+      modelTiers: {
+        cheap: "cheap-model",
+        mid: [
+          { provider: "openrouter", model: "openai/gpt-oss-120b:free" },
+          { provider: "deepseek", model: "deepseek-v4-pro" },
+        ],
+        strong: "strong-model",
+      },
+      modelAssignments: normalizeModelAssignments({
+        debate: "mid",
+      }),
+    } as Pick<RunConfig, "reasoningModel" | "judgeModel" | "modelTiers" | "modelAssignments">;
+
+    expect(modelForStage(config, "debate")).toBe("tier:mid");
+  });
+
   it("falls back when saved config does not include optional routing fields", () => {
     const config = {
       reasoningModel: "reasoning",

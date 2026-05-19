@@ -13,7 +13,7 @@ The v1 goal is not to publish a public npm package yet. The goal is to create a 
 - Represent `cheap`, `mid`, and `strong` as ordered fallback lists, not single models.
 - Let free or low-cost models serve cheap and mid tiers, with automatic fallback for transient provider failures.
 - Keep simple CLI overrides for users who want one explicit frontier model for an entire run.
-- Preserve current provider behavior for OpenAI, OpenRouter, Gemini, DeepSeek, and Claude.
+- Preserve current provider behavior for OpenAI, OpenRouter, Gemini, DeepSeek, Claude, and EdenAI.
 - Make future providers such as HuggingFace addable through new adapters and config entries.
 
 ## Non-Goals
@@ -95,7 +95,7 @@ const config: LLMProviderConfig = {
       label: "OpenRouter",
       apiKeyEnv: "OPENROUTER_API_KEY",
       baseURL: "https://openrouter.ai/api/v1",
-      defaultModel: "qwen/qwen3-coder:free",
+      defaultModel: "openai/gpt-oss-120b:free",
       defaultHeaders: {
         "X-Title": "Cambrian Tree Orchestrator",
       },
@@ -130,7 +130,7 @@ const config: LLMProviderConfig = {
   },
   modelTiers: {
     cheap: [
-      { provider: "openrouter", model: "qwen/qwen3-coder:free" },
+      { provider: "openrouter", model: "openai/gpt-oss-120b:free" },
       { provider: "gemini", model: "gemini-3-flash-preview" },
     ],
     mid: [
@@ -293,7 +293,8 @@ If a HuggingFace endpoint is OpenAI-compatible, it can use the existing OpenAI-c
 
 Package tests:
 
-- Provider registry supports OpenAI, OpenRouter, Gemini, DeepSeek, and Claude.
+- Provider registry supports OpenAI, OpenRouter, Gemini, DeepSeek, Claude, and EdenAI.
+- EdenAI uses the OpenAI-compatible adapter and V3 gateway base URL.
 - Gemini request defaults keep `reasoningEffort: "minimal"`.
 - Anthropic adapter sends top-level `system`, `max_tokens`, `x-api-key`, and `anthropic-version`.
 - OpenAI-compatible adapter sends `reasoning_effort` when configured.
@@ -316,10 +317,9 @@ npm test
 npm run build
 ```
 
-## Open Questions for Implementation
+## Implementation Decisions
 
-- Config file path: use a default `llm-providers.config.ts` at repo root, package defaults only, or both?
-- Package name: use `@cto/llm-providers`, `@cambrian/llm-providers`, or a neutral name if publishing later is likely?
-- Compatibility wrapper: keep `src/providers/llm-provider.ts` for one release, or migrate call sites directly?
-- Route-attempt persistence: store full attempt metadata in `RunState`, or only selected provider/model plus warning summaries?
-
+- Config file path: v1 auto-loads `llm-providers.config.mjs`, `.js`, `.cjs`, or `.json` from the repo root and merges it over package defaults. TypeScript config files are not loaded directly by the built CLI.
+- Package name: v1 uses the private monorepo package name `@cto/llm-providers`.
+- Compatibility wrapper: `src/providers/llm-provider.ts` remains as a thin re-export so CTO call sites do not need to import package internals directly.
+- Route-attempt metadata: the provider package returns per-call attempts on `NormalizedLLMResponse`; full run-state persistence can be expanded later if the UI needs richer provider-route audit trails.

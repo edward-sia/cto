@@ -2,7 +2,7 @@ import { AGENT_DEFINITIONS } from "../agents/definitions.js";
 import { TaskAnalysisSchema } from "../schemas/index.js";
 import type { AgentRole, LLMUsage, TaskAnalysis } from "../types/index.js";
 import { AGENT_ROLES } from "../types/index.js";
-import type { LLMClient } from "../providers/llm-provider.js";
+import type { LLMClient } from "@cto/llm-providers";
 import { formatLLMError } from "../utils/llm-errors.js";
 import { parseJsonObject } from "../utils/json.js";
 import { withRetry } from "../utils/retry.js";

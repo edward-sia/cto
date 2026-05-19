@@ -2,7 +2,7 @@ import { loadFromFile } from "./file-provider.js";
 import { loadFromSample } from "./sample-provider.js";
 import { loadFromOpenApi } from "./openapi-provider.js";
 import type { DomainFacts } from "./types.js";
-import type { LLMClient } from "../providers/llm-provider.js";
+import type { LLMClient } from "@cto/llm-providers";
 
 const KNOWN_PREFIXES = ["file", "sample", "openapi"] as const;
 type GroundTruthPrefix = (typeof KNOWN_PREFIXES)[number];

@@ -15,7 +15,7 @@ import {
 import { combineCoverageDimensions } from "./dimensions.js";
 import { withRetry } from "../utils/retry.js";
 import { addUsage, emptyUsage } from "../utils/usage.js";
-import { LLMClient } from "../providers/llm-provider.js";
+import type { LLMClient } from "@cto/llm-providers";
 
 const COVERAGE_AUDIT_SYSTEM = `You audit a software-engineering debate for coverage gaps and run a brief premortem.
 Return only valid JSON matching the requested shape.

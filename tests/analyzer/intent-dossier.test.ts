@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { IntentDossierBuilder } from "../../src/analyzer/intent-dossier.js";
-import type { LLMClient } from "../../src/providers/llm-provider.js";
+import type { LLMClient } from "@cto/llm-providers";
 
 describe("IntentDossierBuilder", () => {
   it("returns a deterministic dossier in dry-run mode", async () => {

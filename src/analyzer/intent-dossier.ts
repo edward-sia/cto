@@ -3,7 +3,7 @@ import type { IntentDecomposition, IntentDossier, LLMUsage } from "../types/inde
 import { deriveIntentDimensions } from "../critic/dimensions.js";
 import { withRetry } from "../utils/retry.js";
 import { addUsage, emptyUsage } from "../utils/usage.js";
-import { LLMClient } from "../providers/llm-provider.js";
+import type { LLMClient } from "@cto/llm-providers";
 
 const SYSTEM_PROMPT = `You convert a software development intent into a stable implementation dossier.
 

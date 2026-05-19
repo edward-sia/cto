@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { IntentDecomposer } from "../../src/analyzer/intent-decomposer.js";
 import { makeFailingLLM, makeMockLLM } from "../helpers/llm.js";
-import type { LLMClient } from "../../src/providers/llm-provider.js";
+import type { LLMClient } from "@cto/llm-providers";
 
 describe("IntentDecomposer", () => {
   it("returns an empty decomposition in dry-run mode without calling the LLM", async () => {

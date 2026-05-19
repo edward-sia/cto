@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Judge } from "../../src/judge/judge.js";
 import type { TreeNode } from "../../src/types/index.js";
 import { makeMockLLM } from "../helpers/llm.js";
-import type { LLMClient } from "../../src/providers/llm-provider.js";
+import type { LLMClient } from "@cto/llm-providers";
 
 function makeNode(overrides: Partial<TreeNode["context"]> = {}): TreeNode {
   return {

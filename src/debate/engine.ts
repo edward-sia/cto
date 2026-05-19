@@ -28,7 +28,7 @@ import {
 import { ModeratorAssessmentSchema } from "../schemas/index.js";
 import type { ToolBroker, IncomingToolRequest } from "../tools/broker.js";
 import { renderToolEvidenceForPrompt, rollupToolEvidence } from "../tools/render.js";
-import type { LLMClient } from "../providers/llm-provider.js";
+import type { LLMClient } from "@cto/llm-providers";
 import { parseJsonObject } from "../utils/json.js";
 import { withRetry } from "../utils/retry.js";
 import { addUsage, emptyUsage, totalUsageTokens } from "../utils/usage.js";

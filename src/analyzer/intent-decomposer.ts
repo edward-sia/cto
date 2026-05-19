@@ -1,6 +1,6 @@
 import { IntentDecompositionSchema } from "../schemas/index.js";
 import type { IntentDecomposition, LLMUsage } from "../types/index.js";
-import type { LLMClient } from "../providers/llm-provider.js";
+import type { LLMClient } from "@cto/llm-providers";
 import { formatLLMError } from "../utils/llm-errors.js";
 import { parseJsonObject } from "../utils/json.js";
 import { withRetry } from "../utils/retry.js";

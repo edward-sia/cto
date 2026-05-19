@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { DomainFactsSchema } from "../schemas/index.js";
-import type { LLMClient } from "../providers/llm-provider.js";
+import type { LLMClient } from "@cto/llm-providers";
 import type { DomainFacts, SchemaField } from "./types.js";
 import { parseJsonObject } from "../utils/json.js";
 

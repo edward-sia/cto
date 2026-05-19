@@ -34,7 +34,6 @@ src/
 ├── utils/retry.ts            # Exponential-backoff retry wrapper
 ├── utils/cost.ts             # Pre-run token/USD estimator
 ├── utils/pruning.ts          # Confidence/relevance pruning and depth schedules
-├── providers/llm-provider.ts # Thin re-export of packages/llm-providers
 ├── agents/definitions.ts     # Agent system prompts + role configs
 ├── debate/engine.ts          # Round-table debate engine
 ├── orchestrator/orchestrator.ts  # Main tree orchestration loop
@@ -101,7 +100,7 @@ Provider flags:
 - `--model <model>` overrides the provider default for both reasoning and judge calls
 - `--base-url <url>` and `--api-key-env <name>` override the provider registry, useful for proxies or alternate accounts
 
-Provider metadata, model tiers, fallback policy, usage normalization, and wire adapters live in `packages/llm-providers`; `src/providers/llm-provider.ts` is a thin CTO-facing re-export. OpenAI, OpenRouter, Gemini, DeepSeek, and EdenAI share the OpenAI-compatible adapter. EdenAI uses the V3 gateway at `https://api.edenai.run/v3`; model IDs use EdenAI's `provider/model` format and `--model @edenai` enables EdenAI smart routing. Claude uses Anthropic's native `/v1/messages` request shape, where system prompts are top-level, `max_tokens` is required, and `x-api-key` plus `anthropic-version` headers are sent. CTO normalizes all providers to one internal text and usage shape; Claude cache telemetry is recorded when returned, but CTO does not inject Anthropic `cache_control` blocks yet.
+Provider metadata, model tiers, fallback policy, usage normalization, and wire adapters live in `packages/llm-providers`; CTO call sites import `@cto/llm-providers` directly. OpenAI, OpenRouter, Gemini, DeepSeek, and EdenAI share the OpenAI-compatible adapter. EdenAI uses the V3 gateway at `https://api.edenai.run/v3`; model IDs use EdenAI's `provider/model` format and `--model @edenai` enables EdenAI smart routing. Claude uses Anthropic's native `/v1/messages` request shape, where system prompts are top-level, `max_tokens` is required, and `x-api-key` plus `anthropic-version` headers are sent. CTO normalizes all providers to one internal text and usage shape; Claude cache telemetry is recorded when returned, but CTO does not inject Anthropic `cache_control` blocks yet.
 
 Provider-native config can be supplied with `llm-providers.config.mjs`, `.js`, `.cjs`, or `.json` in the repo root. When a config file exists and no explicit `--provider` or `--model` override is passed, CTO routes stages through package tiers (`cheap`, `mid`, `strong`). Each tier is an ordered fallback list of `{ provider, model }` candidates; only rate limits, timeouts, overloaded providers, and server errors fall through to the next candidate.
 
@@ -232,7 +231,7 @@ These tracks are not yet implemented.
 - Imports use `.js` extension (NodeNext module resolution)
 - No classes where a function would suffice — classes only for stateful components (DebateEngine, TreeOrchestrator, Judge, FileStore, CodexExecutor)
 - Types go in `src/types/index.ts`
-- Provider defaults, endpoint configuration, adapters, tier routing, fallback policy, and usage normalization go in `packages/llm-providers`; keep `src/providers/llm-provider.ts` as a thin CTO-facing re-export and do not scatter provider URLs or env var names across call sites
+- Provider defaults, endpoint configuration, adapters, tier routing, fallback policy, and usage normalization go in `packages/llm-providers`; import from `@cto/llm-providers` directly and do not recreate local provider re-export wrappers or scatter provider URLs or env var names across call sites
 - Error handling: wrap LLM calls in try/catch, fallback gracefully, never crash the tree traversal
 - Console output: use chalk for colour, ora for spinners, keep output readable
 - Code-impacting changes should update `README.md`, `AGENTS.md`, `CLAUDE.md`, or `docs/**`; `npm test` enforces this through `npm run docs:check`

@@ -8,7 +8,7 @@ The v1 goal is not to publish a public npm package yet. The goal is to create a 
 
 ## Goals
 
-- Move provider-specific API logic out of `src/providers/llm-provider.ts` into a standalone package.
+- Move provider-specific API logic out of the former CTO-local provider module and into a standalone package.
 - Keep provider config native to the provider package, not CTO-specific.
 - Represent `cheap`, `mid`, and `strong` as ordered fallback lists, not single models.
 - Let free or low-cost models serve cheap and mid tiers, with automatic fallback for transient provider failures.
@@ -71,7 +71,7 @@ packages/
         anthropic.test.ts
 ```
 
-The existing `src/providers/llm-provider.ts` becomes a CTO-facing compatibility wrapper during migration, or it is replaced with imports from `@cto/llm-providers` once call sites are moved.
+The migration ends with CTO call sites importing `@cto/llm-providers` directly. A short compatibility wrapper was acceptable during migration only.
 
 ## Provider-Native Config
 
@@ -282,10 +282,10 @@ If a HuggingFace endpoint is OpenAI-compatible, it can use the existing OpenAI-c
 ## Migration Plan
 
 1. Create `packages/llm-providers` with types, usage normalization, error classification, registry, router, OpenAI-compatible adapter, and Anthropic adapter.
-2. Move current provider tests from `tests/providers/llm-provider.test.ts` into package tests, preserving behavior around Claude, Gemini reasoning effort, usage normalization, and provider labels.
+2. Move provider-runtime tests into package tests, preserving behavior around Claude, Gemini reasoning effort, usage normalization, and provider labels.
 3. Add tier routing tests for ordered fallback behavior and fallback-blocking errors.
 4. Update CTO imports so analyzer, debate, critic, synthesis, judge, and test helpers consume the package types/client.
-5. Keep or replace `src/providers/llm-provider.ts` as a short compatibility wrapper during the migration.
+5. Remove the temporary compatibility wrapper once call sites import `@cto/llm-providers` directly.
 6. Update `RunConfig` persistence to store selected provider/model metadata and tier routing metadata without leaking provider package internals.
 7. Refresh README, AGENTS, CLAUDE, and architecture docs to explain the new package boundary and config model.
 
@@ -321,5 +321,5 @@ npm run build
 
 - Config file path: v1 auto-loads `llm-providers.config.mjs`, `.js`, `.cjs`, or `.json` from the repo root and merges it over package defaults. TypeScript config files are not loaded directly by the built CLI.
 - Package name: v1 uses the private monorepo package name `@cto/llm-providers`.
-- Compatibility wrapper: `src/providers/llm-provider.ts` remains as a thin re-export so CTO call sites do not need to import package internals directly.
+- Compatibility wrapper: the temporary CTO-local wrapper is removed once call sites import `@cto/llm-providers` directly.
 - Route-attempt metadata: the provider package returns per-call attempts on `NormalizedLLMResponse`; full run-state persistence can be expanded later if the UI needs richer provider-route audit trails.

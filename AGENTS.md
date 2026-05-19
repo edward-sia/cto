@@ -34,7 +34,6 @@ src/
 ├── utils/retry.ts            # Exponential-backoff retry wrapper
 ├── utils/cost.ts             # Pre-run token/USD estimator
 ├── utils/pruning.ts          # Confidence/relevance pruning and depth schedules
-├── providers/llm-provider.ts # Thin re-export of packages/llm-providers
 ├── agents/definitions.ts     # Agent system prompts + role configs
 ├── debate/engine.ts          # Round-table debate engine
 ├── orchestrator/orchestrator.ts  # Main tree orchestration loop
@@ -97,7 +96,7 @@ Provider flags:
 - `--model <model>` overrides the provider default for both reasoning and judge calls
 - `--base-url <url>` and `--api-key-env <name>` override the provider registry, useful for proxies or alternate accounts
 
-Provider metadata, model tiers, fallback policy, usage normalization, and wire adapters live in `packages/llm-providers`; `src/providers/llm-provider.ts` re-exports the package for CTO call sites. Persisted runs store provider, model, base URL, API-key env, and model tier assignments in `RunConfig`. `cto resume` reuses the saved provider settings unless explicitly overridden.
+Provider metadata, model tiers, fallback policy, usage normalization, and wire adapters live in `packages/llm-providers`; CTO call sites import `@cto/llm-providers` directly. Persisted runs store provider, model, base URL, API-key env, and model tier assignments in `RunConfig`. `cto resume` reuses the saved provider settings unless explicitly overridden.
 
 Provider-native config can be supplied with `llm-providers.config.mjs`, `.js`, `.cjs`, or `.json` in the repo root. When a config file exists and the user does not explicitly pass `--provider` or `--model`, CTO routes stages through the package tiers: cheap, mid, and strong. Each tier is an ordered fallback list of `{ provider, model }` candidates. Fallback is allowed for rate limits, timeouts, overloaded providers, and server errors; authentication, invalid model, invalid request, context-length, parse, and schema failures should stop the route.
 
@@ -240,7 +239,7 @@ These tracks are not yet implemented. They represent the planned direction befor
 - Imports use `.js` extension (NodeNext module resolution)
 - No classes where a function would suffice — classes only for stateful components (DebateEngine, TreeOrchestrator, Judge, FileStore, CodexExecutor)
 - Types go in `src/types/index.ts`
-- Provider defaults, endpoint configuration, adapters, tier routing, fallback policy, and usage normalization go in `packages/llm-providers`; keep `src/providers/llm-provider.ts` as a thin CTO-facing re-export and do not scatter provider URLs or env var names across call sites
+- Provider defaults, endpoint configuration, adapters, tier routing, fallback policy, and usage normalization go in `packages/llm-providers`; import from `@cto/llm-providers` directly and do not recreate local provider re-export wrappers or scatter provider URLs or env var names across call sites
 - Error handling: wrap LLM calls in try/catch, fallback gracefully, never crash the tree traversal
 - Console output: use chalk for colour, ora for spinners, keep output readable
 - Code-impacting changes should update `README.md`, `AGENTS.md`, `CLAUDE.md`, or `docs/**`; `npm test` enforces this through `npm run docs:check`

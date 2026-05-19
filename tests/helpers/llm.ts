@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { LLMClient, NormalizedLLMResponse } from "../../src/providers/llm-provider.js";
+import type { LLMClient, NormalizedLLMResponse } from "@cto/llm-providers";
 import type { LLMUsage } from "../../src/types/index.js";
 
 export function makeMockLLM(

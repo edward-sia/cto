@@ -29,7 +29,7 @@ import {
   parseLLMProvider,
   providerLabel,
   resolveProviderModel,
-} from "../providers/llm-provider.js";
+} from "@cto/llm-providers";
 import { startUiServer, type StartedUiServer } from "../ui/server.js";
 import { estimateRunCost, formatCostEstimate, priceCodexUsage, priceLLMUsage } from "../utils/cost.js";
 import { defaultModelTiers } from "../utils/model-routing.js";

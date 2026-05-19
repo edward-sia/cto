@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { loadGroundTruth } from "../../src/ground-truth/provider.js";
 import type { DomainFacts } from "../../src/ground-truth/types.js";
 import { makeMockLLM } from "../helpers/llm.js";
-import type { LLMClient } from "../../src/providers/llm-provider.js";
+import type { LLMClient } from "@cto/llm-providers";
 
 async function writeTempFile(name: string, content: string): Promise<string> {
   const dir = join(tmpdir(), "cto-test-gt-factory");

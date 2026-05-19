@@ -52,7 +52,7 @@ import { Synthesizer } from "../synthesis/synthesizer.js";
 import { defaultToolAdapters } from "../tools/adapters.js";
 import { ToolBroker } from "../tools/broker.js";
 import { VerificationRunner } from "../verification/runner.js";
-import type { LLMClient } from "../providers/llm-provider.js";
+import type { LLMClient } from "@cto/llm-providers";
 
 const DEFAULT_PHASE_DEPTHS: Record<TreePhase, [number, number]> = {
   requirements: [0, 1],

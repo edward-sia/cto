@@ -1,5 +1,5 @@
 import type { ModelAssignmentConfig, ModelStage, ModelTier, ModelTierConfig, RunConfig } from "../types/index.js";
-import { tierModelToken } from "../providers/llm-provider.js";
+import { tierModelToken } from "@cto/llm-providers";
 
 export const DEFAULT_MODEL_ASSIGNMENTS: ModelAssignmentConfig = {
   analyzer: "cheap",

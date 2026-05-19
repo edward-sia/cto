@@ -35,9 +35,9 @@ Three layers with strict downward dependencies:
 
 Internal LLM calls do not depend on a provider SDK shape directly. Analyzer,
 debate, exploration synthesis, sample ground-truth extraction, and judging all
-call the normalized `LLMClient` boundary exported through
-`src/providers/llm-provider.ts`. That file is now a thin CTO-facing re-export of
-the standalone provider runtime in `packages/llm-providers`.
+call the normalized `LLMClient` boundary imported directly from
+`@cto/llm-providers`, the standalone provider runtime in
+`packages/llm-providers`.
 
 The provider package owns provider definitions, model tiers, fallback policy,
 usage normalization, error classification, and wire adapters. OpenAI,

@@ -1,5 +1,5 @@
 import type { CodexExecutionResult, LLMUsage, TreeNode } from "../types/index.js";
-import type { LLMClient } from "../providers/llm-provider.js";
+import type { LLMClient } from "@cto/llm-providers";
 import { withRetry } from "../utils/retry.js";
 import { addUsage, emptyUsage } from "../utils/usage.js";
 

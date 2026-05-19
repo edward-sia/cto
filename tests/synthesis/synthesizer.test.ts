@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Synthesizer } from "../../src/synthesis/synthesizer.js";
 import type { TreeNode } from "../../src/types/index.js";
 import { makeFailingLLM, makeMockLLM } from "../helpers/llm.js";
-import type { LLMClient } from "../../src/providers/llm-provider.js";
+import type { LLMClient } from "@cto/llm-providers";
 
 function makeLeafNode(overrides: Partial<TreeNode> = {}): TreeNode {
   return {

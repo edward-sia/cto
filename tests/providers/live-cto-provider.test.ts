@@ -5,7 +5,7 @@ import {
   type LLMClient,
   type LLMProviderConfig,
   type NormalizedLLMResponse,
-} from "../../src/providers/llm-provider.js";
+} from "@cto/llm-providers";
 import { TaskAnalyzer } from "../../src/analyzer/task-analyzer.js";
 import { parseJsonObject } from "../../src/utils/json.js";
 

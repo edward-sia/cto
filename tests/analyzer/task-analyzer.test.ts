@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { TaskAnalyzer } from "../../src/analyzer/task-analyzer.js";
 import { makeFailingLLM, makeMockLLM } from "../helpers/llm.js";
-import type { LLMClient } from "../../src/providers/llm-provider.js";
+import type { LLMClient } from "@cto/llm-providers";
 
 describe("TaskAnalyzer", () => {
   it("returns default panel in dry-run mode without calling the LLM", async () => {

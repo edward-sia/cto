@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { TreeOrchestrator } from "../../src/orchestrator/orchestrator.js";
 import type { Alternative, LeafImplementationSketch, TreeNode } from "../../src/types/index.js";
-import type { LLMClient } from "../../src/providers/llm-provider.js";
+import type { LLMClient } from "@cto/llm-providers";
 
 function makeNoopLLM(): LLMClient {
   return { createChatCompletion: vi.fn() };

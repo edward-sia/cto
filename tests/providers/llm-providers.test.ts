@@ -9,7 +9,7 @@ import {
   OpenAICompatibleLLMClient,
   parseLLMProvider,
   providerLabel,
-} from "../../src/providers/llm-provider.js";
+} from "@cto/llm-providers";
 
 describe("LLM provider registry", () => {
   it("supports EdenAI as a first-class OpenAI-compatible provider", () => {

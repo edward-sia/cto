@@ -5,7 +5,7 @@
 
 import type { TreeNode, JudgeScore, LLMUsage, NodeContext } from "../types/index.js";
 import { JudgeScoreSchema } from "../schemas/index.js";
-import type { LLMClient } from "../providers/llm-provider.js";
+import type { LLMClient } from "@cto/llm-providers";
 import { parseJsonObject } from "../utils/json.js";
 import { withRetry } from "../utils/retry.js";
 import { addUsage, emptyUsage } from "../utils/usage.js";

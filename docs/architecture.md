@@ -19,7 +19,9 @@ Three layers with strict downward dependencies:
                      │
 ┌────────────────────▼────────────────────────┐
 │  Layer 2 — Agent Panel                      │
-│  src/agents/definitions.ts                 │
+│  src/agents/catalog/                       │
+│  src/agents/prompts/                       │
+│  src/agents/parsing/                       │
 │  src/debate/engine.ts                       │
 │  Round-table debate · moderator scoring     │
 └────────────────────┬────────────────────────┘
@@ -305,7 +307,26 @@ src/
 │   └── task-analyzer.ts      # Select run mode and specialist agents
 ├── utils/retry.ts            # Exponential-backoff retry wrapper
 ├── utils/pruning.ts          # Confidence × relevance pruning and depth schedules
-├── agents/definitions.ts     # Agent system prompts + buildAgentPrompt + parseAgentResponse
+├── agents/
+│   ├── definitions.ts        # Stable public facade for agent exports
+│   ├── types.ts              # AgentDefinition, RawAgentDefinition, AgentBoundary
+│   ├── catalog/
+│   │   ├── index.ts          # AGENT_DEFINITIONS assembly
+│   │   ├── roles.ts          # Raw agent system prompts and phase metadata
+│   │   └── boundaries.ts     # selectionSummary / does / doesNot metadata
+│   ├── prompts/
+│   │   ├── build-agent-prompt.ts    # buildAgentPrompt public renderer
+│   │   ├── render-context.ts        # Intent, ground-truth, tool evidence, and node context sections
+│   │   ├── render-compact-debate.ts # Compact debate state section
+│   │   ├── render-debate-messages.ts # Prior/current round transcript snippets
+│   │   ├── render-domain-facts.ts   # Verified domain ground-truth section
+│   │   └── shared-sections.ts       # Shared evidence, tool-request, and role-boundary prompt sections
+│   └── parsing/
+│       ├── parse-agent-response.ts  # parseAgentResponse public parser
+│       ├── parse-alternatives.ts    # ALTERNATIVE extraction
+│       ├── parse-context-updates.ts # CONTEXT_UPDATE extraction
+│       ├── parse-supported-alternative.ts # Support signal extraction
+│       └── parse-tool-requests.ts   # TOOL_REQUEST extraction
 ├── debate/engine.ts          # DebateEngine — round-table loop + moderator assessment
 ├── orchestrator/orchestrator.ts  # TreeOrchestrator — main loop, interactive gate, SIGINT, token budget
 ├── execution/codex-client.ts # CodexExecutor — SDK + CLI fallback

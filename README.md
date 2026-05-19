@@ -306,7 +306,7 @@ CTO classifies each intent before the tree is built:
 - **Implementation** — feature work, bug fixes, refactors, APIs, services, and other code-producing tasks. Leaves execute through Codex, optional verification commands run, then the judge and deterministic fitness scorer rank the resulting implementations.
 - **Exploration** — research questions, feasibility studies, data analysis, and planning spikes. Leaves produce structured synthesis documents without Codex execution or judge scoring.
 
-The analyzer also selects specialists only when grounded in the intent or verified context. A frontend task can pull in UX and Frontend Engineering; an API contract task can pull in API / Integration Architecture; a pure research prompt can stay with Research Planner, Business Analyst, and Data Analyst.
+The analyzer also selects specialists only when grounded in the intent or verified context. A frontend task can pull in UX and Frontend Engineering; an API contract task can pull in API / Integration Architecture; a pure research prompt can stay with Research Planner, Business Analyst, and Data Analyst. Agent role data lives in `src/agents/catalog/`, debate prompt rendering in `src/agents/prompts/`, and response extraction in `src/agents/parsing/`; `src/agents/definitions.ts` remains the stable public facade.
 
 ### `list` — show all saved runs
 

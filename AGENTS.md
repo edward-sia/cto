@@ -34,7 +34,12 @@ src/
 ├── utils/retry.ts            # Exponential-backoff retry wrapper
 ├── utils/cost.ts             # Pre-run token/USD estimator
 ├── utils/pruning.ts          # Confidence/relevance pruning and depth schedules
-├── agents/definitions.ts     # Agent system prompts + role configs
+├── agents/
+│   ├── definitions.ts        # Stable public facade for agent exports
+│   ├── types.ts              # AgentDefinition and catalog boundary types
+│   ├── catalog/              # Raw role prompts, boundaries, and AGENT_DEFINITIONS assembly
+│   ├── prompts/              # Debate prompt builder and context-section renderers
+│   └── parsing/              # CONTEXT_UPDATE / ALTERNATIVE / TOOL_REQUEST extractors
 ├── debate/engine.ts          # Round-table debate engine
 ├── orchestrator/orchestrator.ts  # Main tree orchestration loop
 ├── execution/codex-client.ts # Codex SDK integration
